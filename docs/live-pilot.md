@@ -52,4 +52,6 @@ A fresh registered agent process retrieved the accepted six-call approval, inclu
 
 The substantive consultant contributions were a bounded worker-tail/acceptance-path evidence request, a distinction between inspected code and reported test results, and the recommendation to validate retained decisions through a fresh client. Source-byte inclusion and transitive stale-reference handling remain explicit limitations. No consultant design proposal was accepted, and this operational approval does not accept risks or findings.
 
-Thirty-eight offline tests pass on Node 24.20.0 and 26.0.0 on macOS, including large-history retrieval, independent retry boundaries, private-file capture limits and metadata-only reconciliation. The browser walkthrough also passes with fake providers. These fixture results are separate from the six real calls above.
+Thirty-nine offline tests pass on Node 24.20.0 and 26.0.0 on macOS, including large-history retrieval, independent retry boundaries, private-file capture limits and metadata-only reconciliation. The browser walkthrough also passes with fake providers. These fixture results are separate from the six real calls above.
+
+The focused live packet exposed a coverage-counter bug: its cross-thread message was subtracted from the local thread history count, yielding `-1`. The subsequent fix counts only omitted messages belonging to the current thread. A regression fixture and local packet rebuild verify `0`; the original packet/hash remain untouched and no seventh call was made.

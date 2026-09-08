@@ -4,8 +4,8 @@ Development preview, 2026-09-08. The operator-approved macOS pilot used exactly 
 
 | Surface | Result | Evidence / limit |
 |---|---|---|
-| Node 26.0.0, macOS arm64 | 38 tests passed | `npm test`, including package/install fixture and conservative recovery/native-terminal cases |
-| Node 24.20.0, macOS arm64 | 38 tests passed | Official archive SHA-256 verified; same final test set |
+| Node 26.0.0, macOS arm64 | 39 tests passed | `npm test`, including package/install fixture and conservative recovery/native-terminal cases |
+| Node 24.20.0, macOS arm64 | 39 tests passed | Official archive SHA-256 verified; same final test set |
 | SQLite | 3.53.4, FTS5 available | Runtime doctor on both runtimes |
 | Codex 0.153.4 | Live calls completed | Live requested `gpt-6-astra` through ChatGPT login; two validated replies after one startup-notice rejection; resolved identity unreported |
 | OpenCode 1.18.18 | Three live replies validated | Saved Coding Plan route; exported session metadata confirms `zai-coding-plan/glm-5.3`; zero tool activity |

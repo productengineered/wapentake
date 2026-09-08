@@ -86,7 +86,7 @@ export function buildPacket(room,project,threadId,participantId,{job=null}={}) {
     packet.sources.push(sourceItem(source,policy.max_retrieval_bytes));
     if(measure()>policy.max_packet_bytes-1200){packet.sources.pop();omissions.push({id:source.id,reason:'packet_budget'});}
   }
-  packet.coverage.history_omitted_count=Number(store.get('SELECT count(*) n FROM messages WHERE project_id=? AND thread_id=?',project,threadId).n)-packet.messages.length;
+  packet.coverage.history_omitted_count=Number(store.get('SELECT count(*) n FROM messages WHERE project_id=? AND thread_id=? AND id NOT IN (SELECT value FROM json_each(?))',project,threadId,JSON.stringify(packet.messages.map(m=>m.id))).n);
   packet.coverage.optional_omissions=omissions.slice(0,10);
   const prompt=render(),bytes=Buffer.byteLength(prompt);
   if(bytes>policy.max_packet_bytes)fail('needs_scoping','Context coverage metadata exceeds the remaining packet budget',{required_bytes:bytes,limit_bytes:policy.max_packet_bytes});

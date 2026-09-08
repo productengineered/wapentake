@@ -28,6 +28,16 @@ test('late operator corrections and both unresolved claims survive an independen
   for(const text of ['current contract exactly','empty lists are safe','hides outages','Correction: a missing'])assert.ok(packet.prompt.includes(text));
 });
 
+test('citing an earlier thread does not count its messages against this thread history',t=>{
+  const f=fixture(t),p=f.project.id;
+  const approval=f.room.post(p,f.thread.id,{body:'Approve a bounded pilot.',key:'approval'});
+  const focused=f.room.openThread(p,{title:'Read the prior approval',mode:'independent',key:'focused'});
+  f.room.ask(p,focused.id,{body:'What was approved?',source_ids:[approval.id],to:['glm'],key:'read-approval'});
+  const packet=buildPacket(f.room,p,focused.id,'glm');
+  assert.equal(packet.packet.messages.length,2);assert.equal(packet.packet.coverage.history_omitted_count,0);
+  assert.ok(packet.packet.messages.some(m=>m.id===approval.id));
+});
+
 test('required oversized evidence refuses before launch and changed sources are visible',t=>{
   const f=fixture(t),p=f.project.id,th=f.thread.id;
   writeFileSync(join(f.repo,'large.txt'),'a'.repeat(40000));

@@ -8,4 +8,5 @@
 - Add a loopback browser interface, CLI exports, verified backup/restore and opt-in advisory workflow events.
 - Validate six plan-backed macOS calls; preserve known Codex startup diagnostics, verify GLM session model identity and recover truncated metadata exports without new inference.
 - Preserve independent first-round boundaries across late human citations and explicit retries. Persist client exit receipts for auditable capture reconciliation.
+- Correct omitted-history counts when focused threads cite messages from an earlier discussion.
 - Linux verification and real consumer adoption remain pending; Codex resolved model identity is unreported. This is not an integrated supported toolkit release.
