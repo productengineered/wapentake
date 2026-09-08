@@ -1,4 +1,6 @@
 import { join } from 'node:path';
+import { rmSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { privateDir,privateWrite } from '../store.mjs';
 import { fail } from '../contracts.mjs';
 import { inspectCommand,runProcess,eventsFromJSONL,safeEnvironment,classifyFailure } from './process.mjs';
@@ -35,6 +37,16 @@ export function normalizeOpenCode(output,{code=0}={}){
   let value;try{value=JSON.parse(texts.join(''));}catch{fail('invalid_output','Final OpenCode assistant text is not a single JSON object');}
   return {value,usage,usage_unknown_reason:usage?null:'Native usage was not reported',session_id:session,observed_model:observedModel,tool_activity:0,terminal_state:'step_finish'};
 }
+export function verifyOpenCodeSession(exported,sessionId,model){
+  if(exported?.info?.id!==sessionId||!Array.isArray(exported.messages))fail('client_unsupported','OpenCode session export does not match the completed session');
+  const assistant=exported.messages.filter(m=>m.info?.role==='assistant');
+  if(assistant.length!==1)fail('client_unsupported','Fresh OpenCode consultation did not produce exactly one assistant message');
+  const message=assistant[0],observed=`${message.info.providerID}/${message.info.modelID}`;
+  if(observed!==model)fail('model_unavailable','OpenCode session recorded a different provider or model');
+  if(!['stop','end_turn'].includes(message.info.finish))fail('invalid_output','OpenCode session did not record a normal assistant completion');
+  if(!Array.isArray(message.parts)||message.parts.some(p=>!['step-start','step-finish','text','reasoning'].includes(p.type)))fail('permission_config_error','OpenCode session contains tool activity or unsupported message parts');
+  return {observed_model:observed,model_identity_source:'client_session_metadata',provider:message.info.providerID,session_id:sessionId,assistant_message_id:message.info.id,finish:message.info.finish,tool_activity:0};
+}
 export class OpenCodeAdapter {
   constructor({executable='opencode'}={}){this.executable=executable;this.kind='opencode-glm-plan';}
   async inspect({cwd,model='zai-coding-plan/glm-5.3',env=safeEnvironment(),checkProfile=false}={}){
@@ -67,6 +79,18 @@ export class OpenCodeAdapter {
   }
   async run(prepared,{prompt,policy,signal,onSpawn,onCapture}){
     const result=await runProcess(prepared.command,prepared.args,{cwd:prepared.cwd,env:prepared.env,input:prompt,timeoutMs:policy.timeout_seconds*1000,maxBytes:policy.max_output_bytes,signal,onSpawn,onCapture});
-    return {...normalizeOpenCode(result.stdout,result),capabilities:prepared.capabilities};
+    return this.normalizeCapture(prepared,result,{signal});
+  }
+  async normalizeCapture(prepared,result,{signal}={}){
+    const normalized=normalizeOpenCode(result.stdout,result);
+    const stdoutFile=join(prepared.cwd,`session-export-${randomUUID()}.json`);
+    let exported;
+    try{exported=await runProcess(prepared.command,['export',normalized.session_id,'--pure'],{cwd:prepared.cwd,env:prepared.env,timeoutMs:15000,maxBytes:2097152,signal,stdoutFile});}
+    finally{rmSync(stdoutFile,{force:true});}
+    if(exported.code!==0)fail('client_unsupported','Could not inspect the completed OpenCode session metadata');
+    let session;try{session=JSON.parse(exported.stdout);}catch{fail('client_unsupported','OpenCode session export was not JSON');}
+    const verification=verifyOpenCodeSession(session,normalized.session_id,prepared.capabilities.requested_model);
+    privateWrite(join(prepared.cwd,'client-session-verification.json'),JSON.stringify(verification,null,2));
+    return {...normalized,...verification,capabilities:prepared.capabilities};
   }
 }

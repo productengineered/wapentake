@@ -143,7 +143,7 @@ export class Store {
     }
     for (const job of jobs) {
       const dir = this.jobDir(job.project_id, job.id);
-      for (const name of ['packet.json','packet.md','output.json','native-events.jsonl','invocation.json']) {
+      for (const name of ['packet.json','packet.md','output.json','native-events.jsonl','invocation.json','client-result.json','client-session-verification.json']) {
         const path = join(dir, name);
         if (!existsSync(path)) continue;
         const data = readFileSync(path), rel = `projects/${job.project_id}/jobs/${job.id}/${name}`;

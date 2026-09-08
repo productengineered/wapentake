@@ -2,7 +2,7 @@
 
 A local conversation room for a human, active coding agents, GLM through OpenCode, and Astra through Codex. Messages, selected evidence and versioned decisions survive fresh agent sessions. The CLI and browser interface use the same command contracts.
 
-**Status:** development preview. Offline behavior and local client configuration are verified; live plan/model compatibility and the consumer pilot are pending. See [verification](docs/verification.md) for the exact evidence and open checks. Execution starts disabled. This package does not update task status, approve reviews, or merge code.
+**Status:** development preview. Offline behavior and a six-call macOS pilot through the existing plans are verified. Linux and real consumer adoption remain pending; Codex does not report its resolved model identity. See [verification](docs/verification.md) for the exact evidence and open checks. Execution starts disabled. This package does not update task status, approve reviews, or merge code.
 
 ## Runtime and installation
 
@@ -120,6 +120,8 @@ agent-room backup --operator --out /new/backup-directory
 agent-room restore --operator --from /backup-directory --out /new/state-directory
 ```
 
+A completed OpenCode response whose session metadata export failed can be reconciled without another model call: write `{"id":"JOB_ID"}` to a JSON file and run `agent-room call --operator --action jobs.reconcile-capture --input-file capture.json`. This narrow operation requires the original successful exit receipt and matching packet, revalidates native output and saved session metadata, retains the original failure event and charged allowance, and never queues a follow-up. Missing receipts or other failures refuse.
+
 Never recover a live worker claim. Inspect the stored process identity and establish that the original worker and child have stopped before `--confirm-stopped`. Recovery retains `interrupted_unknown` and uncertain consumption. Retrying is a new invitation and is never automatic for a lost process. Local cancellation cannot prove a remote service stopped processing.
 
 Export includes Markdown, JSON records and captured source blobs. Backup uses SQLite's consistent backup facility and a manifest of referenced file hashes. Restore verifies the manifest into a new directory, revokes old capabilities, issues a new operator token, disables execution and marks restored in-flight work uncertain. Keep the original state until the restored store is inspected. Back up before upgrading. Newer database/configuration schemas and malformed stores refuse explicitly; there is no empty fallback database.
@@ -138,6 +140,6 @@ Automatic follow-up can be set to at most one round. It waits for initial answer
 npm test
 ```
 
-Tests create temporary stores/projects and use fake providers. They do not read real task databases or consume model quota. The optional `tests/browser-smoke.mjs` uses an explicitly supplied Playwright installation and a disposable browser context. Native client compatibility still needs the operator-authorized [live pilot](docs/live-pilot.md).
+Tests create temporary stores/projects and use fake providers. They do not read real task databases or consume model quota. The optional `tests/browser-smoke.mjs` uses an explicitly supplied Playwright installation and a disposable browser context. The operator-authorized [live pilot](docs/live-pilot.md) records the observed native client compatibility and its limits.
 
 Exit codes: `0` success, `2` invalid input/not found, `3` authentication/authorization/disabled/unsupported/allowance, `4` conflict, `5` storage failure, `6` provider/cancel/invalid-output failure, `7` context needs scoping. The JSON error code carries the precise reason.

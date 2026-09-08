@@ -21,7 +21,7 @@ export function buildPacket(room,project,threadId,participantId,{job=null}={}) {
   const decisions=room.decisions(project,threadId).filter(d=>{
     if(!job||job.round!==0||thread.mode!=='independent'||d.status!=='proposed')return true;
     const after=d.citations.flatMap(id=>{const m=store.get('SELECT author_role,seq FROM messages WHERE project_id=? AND id=? AND seq>?',project,id,boundary);return m?[m]:[];});
-    return !after.some(m=>m.author_role!=='operator')||after.some(m=>m.author_role==='operator');
+    return !after.some(m=>m.author_role!=='operator');
   });
   const unresolved=store.all("SELECT m.id FROM messages m WHERE m.project_id=? AND m.thread_id=? AND m.kind IN ('objection','unknown') AND m.seq<=? AND NOT EXISTS(SELECT 1 FROM messages r WHERE r.reply_to=m.id AND r.author_role='operator' AND r.kind IN ('conclusion','correction')) ORDER BY m.seq",project,threadId,boundary);
   for(const row of unresolved)required.set(row.id,room.message(project,row.id));

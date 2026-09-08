@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync,rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { normalizeCodex,codexArguments } from '../src/adapters/codex.mjs';
-import { normalizeOpenCode,openCodeProfile } from '../src/adapters/opencode.mjs';
+import { normalizeOpenCode,openCodeProfile,verifyOpenCodeSession } from '../src/adapters/opencode.mjs';
 import { safeEnvironment,runProcess,processAlive,processIdentity } from '../src/adapters/process.mjs';
 import { response } from './helpers.mjs';
 
@@ -39,6 +42,21 @@ test('unavailable process inspection does not turn a live owner into a recoverab
   assert.equal(processAlive(process.pid,identity,()=>identity+' different process'),false);
 });
 
+test('verified Codex startup notices are retained without ignoring arbitrary errors or later activity',()=>{
+  const notice={type:'item.completed',item:{id:'notice',type:'error',message:'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.'}};
+  const out=normalizeCodex(JSON.stringify(notice)+'\n'+codex(response()));assert.equal(out.value.kind,'answer');assert.equal(out.diagnostics.length,1);
+  assert.throws(()=>normalizeCodex(JSON.stringify({...notice,item:{...notice.item,message:'Unexpected client failure'}})+'\n'+codex(response())),{code:'provider_error'});
+  assert.throws(()=>normalizeCodex(codex(response())+'\n'+JSON.stringify(notice)),{code:'client_unsupported'});
+});
+
+test('OpenCode session metadata establishes the exact plan provider/model and rejects tools or another session',()=>{
+  const record={info:{id:'s1'},messages:[{info:{role:'user'}},{info:{role:'assistant',id:'a1',providerID:'zai-coding-plan',modelID:'glm-5.3',finish:'stop'},parts:[{type:'step-start'},{type:'text'},{type:'step-finish'}]}]};
+  assert.equal(verifyOpenCodeSession(record,'s1','zai-coding-plan/glm-5.3').observed_model,'zai-coding-plan/glm-5.3');
+  assert.throws(()=>verifyOpenCodeSession(record,'another','zai-coding-plan/glm-5.3'),{code:'client_unsupported'});
+  const wrong=structuredClone(record);wrong.messages[1].info.providerID='general-api';assert.throws(()=>verifyOpenCodeSession(wrong,'s1','zai-coding-plan/glm-5.3'),{code:'model_unavailable'});
+  const tool=structuredClone(record);tool.messages[1].parts.push({type:'tool'});assert.throws(()=>verifyOpenCodeSession(tool,'s1','zai-coding-plan/glm-5.3'),{code:'permission_config_error'});
+});
+
 test('adapter profiles preserve explicit models, remove API overrides and always start fresh',()=>{
   const args=codexArguments('gpt-6-astra');assert.ok(args.includes('--ignore-user-config'));assert.ok(args.includes('--ephemeral'));
   for(const flag of ['--continue','--session','--last','resume'])assert.ok(!args.includes(flag));
@@ -53,4 +71,11 @@ test('process boundary handles timeout, output limits and split Unicode without 
   assert.equal(split.stdout,'🌎');
   await assert.rejects(runProcess(process.execPath,['-e','setInterval(()=>{},1000)'],{timeoutMs:50}),{code:'timeout'});
   await assert.rejects(runProcess(process.execPath,['-e',"process.stdout.write('x'.repeat(10000))"],{timeoutMs:1000,maxBytes:1000}),{code:'invalid_output'});
+});
+
+test('regular-file stdout survives an immediate client exit above 64 KiB and still enforces capture bounds',async t=>{
+  const dir=mkdtempSync(join(tmpdir(),'room-export-test-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+  const result=await runProcess(process.execPath,['-e',"process.stdout.write(JSON.stringify({text:'x'.repeat(100000)}));process.exit(0)"],{stdoutFile:join(dir,'large.json'),maxBytes:200000});
+  assert.equal(JSON.parse(result.stdout).text.length,100000);
+  await assert.rejects(runProcess(process.execPath,['-e',"process.stdout.write('x'.repeat(10000));process.exit(0)"],{stdoutFile:join(dir,'limited.json'),maxBytes:1000}),{code:'invalid_output'});
 });

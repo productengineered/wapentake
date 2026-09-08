@@ -3,13 +3,17 @@ import { RoomError,fail } from '../contracts.mjs';
 import { inspectCommand,runProcess,eventsFromJSONL,safeEnvironment,classifyFailure } from './process.mjs';
 
 export const CODEX_DISABLE=['shell_tool','unified_exec','apps','plugins','hooks','multi_agent','multi_agent_v2','browser_use','computer_use','image_generation','view_image','skill_search','memories','goals','sleep_tool','code_mode_host','code_mode','in_app_browser','auth_elicitation','request_permissions_tool','shell_snapshot','remote_plugin','recommended_plugins'];
+const disabledCodeModeNotice='Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.';
+function knownStartupNotice(message){
+  return message===disabledCodeModeNotice||/^Under-development features enabled: skip_host_skill_discovery\. Under-development features are incomplete and may behave unpredictably\. To suppress this warning, set `suppress_unstable_features_warning = true` in [^\n]+\/config\.toml\.$/.test(message??'');
+}
 export function codexArguments(model,schemaPath=fileURLToPath(new URL('../../schemas/consultant-response.json',import.meta.url))) {
   if(model!=='gpt-6-astra')fail('model_unavailable','The Astra adapter requires explicit gpt-6-astra; no fallback is permitted');
-  return ['exec','--model',model,'--sandbox','read-only','--skip-git-repo-check','--ephemeral','--ignore-user-config','--json','--color','never','--output-schema',schemaPath,'-c','web_search="disabled"','-c','approval_policy="never"','-c','model_reasoning_effort="low"',...CODEX_DISABLE.flatMap(name=>['--disable',name]),'--enable','skip_host_skill_discovery','-'];
+  return ['exec','--model',model,'--sandbox','read-only','--skip-git-repo-check','--ephemeral','--ignore-user-config','--json','--color','never','--output-schema',schemaPath,'-c','web_search="disabled"','-c','approval_policy="never"','-c','model_reasoning_effort="low"','-c','suppress_unstable_features_warning=true',...CODEX_DISABLE.flatMap(name=>['--disable',name]),'--enable','skip_host_skill_discovery','-'];
 }
 export function normalizeCodex(output,{code=0}={}) {
   const events=eventsFromJSONL(output);
-  let final=null,completed=false,turnStarted=false,usage=null,session=null,observedModel=null;
+  let final=null,completed=false,turnStarted=false,usage=null,session=null,observedModel=null,diagnostics=[];
   for(const event of events){
     if(event.type==='thread.started'){session=event.thread_id??null;observedModel=event.model??null;}
     else if(event.type==='turn.started'){
@@ -19,6 +23,10 @@ export function normalizeCodex(output,{code=0}={}) {
     else if(['item.started','item.updated','item.completed'].includes(event.type)){
       const item=event.item;
       if(completed)fail('client_unsupported','Codex emitted an item after the terminal event');
+      if(item?.type==='error'){
+        if(!turnStarted&&event.type==='item.completed'&&knownStartupNotice(item.message)){diagnostics.push({kind:'startup_notice',message:item.message});continue;}
+        fail(classifyFailure(item.message),'Codex reported an unsupported client error item');
+      }
       if(!item||!['agent_message','reasoning'].includes(item.type))fail('permission_config_error','Consultant emitted unexpected tool or unsupported item activity');
       if(event.type==='item.completed'&&item.type==='agent_message'){
         const phase=item.phase??item.channel;
@@ -38,7 +46,7 @@ export function normalizeCodex(output,{code=0}={}) {
   if(code!==0)fail(classifyFailure(output),'Codex exited unsuccessfully');
   if(!turnStarted||!completed||final===null)fail('invalid_output','Codex exited without a completed turn and final assistant response');
   let value;try{value=JSON.parse(final);}catch{fail('invalid_output','Final Codex assistant response is not a single JSON object');}
-  return {value,usage,usage_unknown_reason:usage?null:'Native usage was not reported',session_id:session,observed_model:observedModel,tool_activity:0,terminal_state:'turn.completed'};
+  return {value,usage,usage_unknown_reason:usage?null:'Native usage was not reported',session_id:session,observed_model:observedModel,tool_activity:0,diagnostics,terminal_state:'turn.completed'};
 }
 export class CodexAdapter {
   constructor({executable='codex'}={}){this.executable=executable;this.kind='codex-chatgpt-astra';}

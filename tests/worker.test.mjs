@@ -50,6 +50,42 @@ test('operator change during inference keeps stale reply but does not promote it
   assert.equal(out.status,'succeeded');assert.equal(out.job.stale_context,1);assert.equal(f.room.decisions(p,th).length,0);
 });
 
+test('metadata-only reconciliation requires a successful receipt, preserves charged failure history and never reinvokes the model',async t=>{
+  const f=fixture(t),p=f.project.id,th=f.thread.id;
+  const asked=f.room.ask(p,th,{body:'Recover a completed capture.',to:['glm'],key:'capture'});f.room.setPolicy({execution_enabled:true});
+  let calls=0;
+  const adapter={
+    async prepare({participant}){return {participant,capabilities:{requested_model:participant.model}};},
+    async run(prepared,{onCapture}){calls++;onCapture({stdout:'saved fixture',stderr:'',code:0,signal:null,spawned:true});throw new RoomError('client_unsupported','OpenCode session export was not JSON');},
+    async normalizeCapture(prepared,result){assert.equal(result.stdout,'saved fixture');assert.equal(result.code,0);return {value:{...response('Recovered original answer'),proposed_decision:{statement:'Old proposal',rationale:'Old basis',citations:[]}},observed_model:prepared.participant.model,terminal_state:'fixture-terminal'};},
+  };
+  const worker=new Worker(f.room,{adapters:new Map([['opencode-glm-plan',adapter]])});
+  assert.equal((await worker.runOnce()).status,'failed');const id=asked.job_ids[0],dir=f.store.jobDir(p,id);
+  const receipt=readFileSync(join(dir,'client-result.json'),'utf8');writeFileSync(join(dir,'client-result.json'),JSON.stringify({exit_code:1,signal:null,spawned:true}));
+  await assert.rejects(worker.reconcileCapture(p,id),{code:'conflict'});writeFileSync(join(dir,'client-result.json'),receipt);
+  const packet=readFileSync(join(dir,'packet.json'),'utf8'),changed=JSON.parse(packet);changed.prompt=changed.prompt.replace('Recover a completed capture.','Changed capture.');writeFileSync(join(dir,'packet.json'),JSON.stringify(changed));
+  await assert.rejects(worker.reconcileCapture(p,id),{code:'storage_error'});writeFileSync(join(dir,'packet.json'),packet);
+  f.room.post(p,th,{body:'Human correction arrived after the invocation.',key:'correction'});
+  const out=await worker.reconcileCapture(p,id);assert.equal(out.status,'succeeded');assert.equal(out.job.stale_context,1);assert.equal(f.room.decisions(p,th).length,0);
+  assert.equal((await worker.reconcileCapture(p,id)).already_recorded,true);assert.equal(calls,1);assert.equal(f.room.usage(p).started,1);
+  const events=f.store.all('SELECT event FROM job_events WHERE job_id=?',id).map(e=>e.event);assert.ok(events.includes('failed'));assert.ok(events.includes('capture_reconciled'));
+});
+
+test('late human citations and an explicit retry cannot leak the sibling first answer into an independent packet',async t=>{
+  const f=fixture(t),p=f.project.id,th=f.thread.id;
+  const asked=f.room.ask(p,th,{body:'Independent assessments.',to:['glm','astra'],key:'q'});
+  const correction=f.room.post(p,th,{body:'Human clarification shared by both initial jobs.',key:'human'});
+  f.room.setPolicy({execution_enabled:true});let rejectAstra=true;
+  const fake=fakeAdapters(async(prepared,options)=>{
+    if(prepared.participant.alias==='glm')return {...response('SIBLING_PRIVATE_ANSWER'),proposed_decision:{statement:'SIBLING_PRIVATE_PROPOSAL',rationale:'Based on the clarification.',citations:[correction.id]}};
+    assert.ok(options.prompt.includes(correction.body));assert.ok(!options.prompt.includes('SIBLING_PRIVATE_ANSWER'));assert.ok(!options.prompt.includes('SIBLING_PRIVATE_PROPOSAL'));
+    if(rejectAstra)throw new RoomError('invalid_output','Captured output rejected by fixture');return response();
+  });
+  const worker=new Worker(f.room,{adapters:fake.adapters});await worker.runOnce();assert.equal((await worker.runOnce()).status,'failed');
+  const retry=f.room.retry(p,asked.job_ids[1],'retry');assert.equal(retry.boundary_seq,f.room.job(p,asked.job_ids[1]).boundary_seq);
+  rejectAstra=false;assert.equal((await worker.runOnce()).status,'succeeded');
+});
+
 test('changed selected working-tree evidence is recaptured before launch',async t=>{
   const f=fixture(t),p=f.project.id,th=f.thread.id;
   writeFileSync(join(f.repo,'contract.txt'),'old contract');const source=f.room.addSource(p,th,{path:'contract.txt',working_tree:true,key:'source'});

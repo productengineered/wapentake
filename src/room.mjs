@@ -256,8 +256,8 @@ export class Room {
     if (this.store.get('SELECT job_id FROM worker_claim WHERE job_id=?',id)) fail('conflict','Reconcile the original worker before retrying');
     return this.store.idempotent(project,this.actor.id,`retry:${id}`,key,{ id },() => {
       const next = uuid(), thread = this.thread(project,old.thread_id);
-      const boundary = this.store.get('SELECT max(seq) n FROM messages WHERE project_id=? AND thread_id=?',project,old.thread_id).n;
-      this.store.run('INSERT INTO jobs(id,project_id,thread_id,participant_id,causal_key,question_id,boundary_seq,context_version,status,requested_model,parent_job_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)', next,project,old.thread_id,old.participant_id,`retry:${id}:${key}`,old.question_id,boundary,thread.context_version,'queued',old.requested_model,id,now());
+      const boundary = thread.mode==='independent'&&old.round===0?old.boundary_seq:this.store.get('SELECT max(seq) n FROM messages WHERE project_id=? AND thread_id=?',project,old.thread_id).n;
+      this.store.run('INSERT INTO jobs(id,project_id,thread_id,participant_id,causal_key,question_id,boundary_seq,context_version,round,status,requested_model,parent_job_id,retrieval,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)', next,project,old.thread_id,old.participant_id,`retry:${id}:${key}`,old.question_id,boundary,thread.context_version,old.round,'queued',old.requested_model,id,JSON.stringify(old.retrieval),now());
       this._reserve(next,project,old.thread_id); this.store.event(next,'explicit_retry',{ previous_job:id,actor_id:this.actor.id }); return this.job(project,next);
     });
   }

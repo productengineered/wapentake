@@ -107,28 +107,10 @@ export class Worker {
       },250);timer.unref();
       const normalized=await adapter.run(prepared,{prompt:packet.prompt,policy:this.room.policy(),signal:controller.signal,
         onSpawn:pid=>{this.store.run('UPDATE worker_claim SET child_pid=?,child_identity=?,heartbeat=? WHERE job_id=?',pid,processIdentity(pid),now(),job.id);this.store.event(job.id,'spawned',{child_pid:pid});},
-        onCapture:result=>{privateWrite(join(dir,'native-events.jsonl'),result.stdout);privateWrite(join(dir,'client-diagnostic.txt'),result.stderr??'');},
+        onCapture:result=>{privateWrite(join(dir,'native-events.jsonl'),result.stdout);privateWrite(join(dir,'client-diagnostic.txt'),result.stderr??'');privateWrite(join(dir,'client-result.json'),JSON.stringify({exit_code:result.code,signal:result.signal,spawned:result.spawned},null,2));},
       });
       if(controller.signal.aborted||this.room.job(job.project_id,job.id).cancel_requested)fail('cancelled','Consultation was cancelled; output was not promoted');
-      if(normalized.observed_model&&normalized.observed_model!==participant.model&&normalized.observed_model!==participant.model.split('/').at(-1))fail('model_unavailable','Client reported a different model than requested');
-      const response=validateResponse(normalized.value,{citations:packet.packet.allowed_citations,participants:packet.packet.discussion_participants.map(p=>p.id)});
-      for(const request of response.context_requests)if(request.kind==='read')this.room.source(job.project_id,request.source_id);
-      const changed=this.room.thread(job.project_id,job.thread_id).context_version!==packet.context_version||sourceFreshness(this.store,packet.source_snapshot).length>0;
-      const output={response,requested_model:participant.model,observed_model:normalized.observed_model??null,model_identity_verified:normalized.observed_model!==null&&normalized.observed_model!==undefined,usage:normalized.usage??null,usage_unknown_reason:normalized.usage_unknown_reason??null,terminal_state:normalized.terminal_state,session_id:normalized.session_id??null,stale_context:changed,completed_at:now()};
-      privateWrite(join(dir,'output.json'),JSON.stringify(output,null,2));
-      const finished=this.store.tx(()=>{
-        const author={id:participant.id,name:participant.alias,role:'consultant'};
-        const message=this.room._post(job.project_id,job.thread_id,{body:response.body,kind:response.kind,reply_to:job.question_id,source_ids:response.citations,job_id:job.id,basis_context_version:packet.context_version},author);
-        this.store.run("UPDATE jobs SET status='succeeded',reply_id=?,stale_context=?,usage=?,completed_at=? WHERE id=?",message.id,changed?1:0,JSON.stringify(normalized.usage??null),now(),job.id);
-        if(response.proposed_decision&&!changed){
-          const d=response.proposed_decision,id=uuid();
-          this.store.run('INSERT INTO decisions VALUES(?,?,?,?,?,?,?,?,?,?,?)',id,uuid(),1,job.project_id,job.thread_id,d.statement,d.rationale,'proposed',JSON.stringify([...new Set([...d.citations,message.id])]),participant.id,now());
-        }
-        if(response.kind==='needs_context')this.store.run("UPDATE threads SET status='waiting_for_input' WHERE id=?",job.thread_id);
-        this.store.event(job.id,'succeeded',{reply_id:message.id,stale_context:changed,usage_available:normalized.usage!==null&&normalized.usage!==undefined});
-        this.store.run('DELETE FROM worker_claim WHERE job_id=?',job.id);
-        return {status:'succeeded',job:this.room.job(job.project_id,job.id),reply:this.room.message(job.project_id,message.id)};
-      });
+      const finished=this.persistResponse(job,participant,packet,normalized,dir);
       this.queueFollowUps(job.project_id,job.question_id);
       return finished;
     }catch(error){
@@ -144,6 +126,57 @@ export class Worker {
       this.queueFollowUps(job.project_id,job.question_id);
       return {status,job:this.room.job(job.project_id,job.id),error:{code,message}};
     }finally{clearInterval(timer);this.active=false;}
+  }
+  async reconcileCapture(project,id){
+    this.room.operator();
+    const job=this.room.job(project,id);
+    if(job.status==='succeeded')return {status:'succeeded',job,already_recorded:true};
+    if(job.status!=='failed'||job.cancel_requested||this.store.get('SELECT job_id FROM worker_claim WHERE job_id=?',id))fail('conflict','Only a stopped, failed, uncancelled capture can be reconciled');
+    const participant=this.room.participants(project).find(p=>p.id===job.participant_id);
+    if(participant?.adapter!=='opencode-glm-plan'||job.error_code!=='client_unsupported'||!['OpenCode session export was not JSON','Could not inspect the completed OpenCode session metadata'].includes(job.error_message))fail('conflict','This failure has no supported metadata-only reconciliation');
+    const dir=this.store.jobDir(project,id),read=name=>JSON.parse(readFileSync(join(dir,name),'utf8'));
+    const receipt=read('client-result.json'),packet=read('packet.json'),invocation=read('invocation.json');
+    if(receipt.exit_code!==0||receipt.signal!==null||receipt.spawned!==true)fail('conflict','Captured client did not have a proven successful exit');
+    if(this.store.get('SELECT state FROM budget_ledger WHERE job_id=?',id)?.state!=='started')fail('storage_error','Captured invocation has no charged launch record');
+    if(sha256(packet.prompt)!==job.packet_hash||packet.hash!==job.packet_hash||readFileSync(join(dir,'packet.md'),'utf8')!==packet.prompt||invocation.packet_hash!==job.packet_hash||invocation.requested_model!==participant.model||packet.config_hash!==job.config_hash)fail('storage_error','Saved invocation or packet integrity check failed');
+    // Read the structured packet from the hashed original prompt, not mutable JSON metadata.
+    const marker='\n\nROOM PACKET\n';
+    if(!packet.prompt.includes(marker))fail('storage_error','Saved packet has no structured room content');
+    packet.packet=JSON.parse(packet.prompt.slice(packet.prompt.lastIndexOf(marker)+marker.length));
+    packet.context_version=packet.packet.thread.context_version;
+    packet.source_snapshot=[...new Set([...packet.packet.sources.map(s=>s.id),...packet.packet.retrieval.filter(r=>r.kind==='read').map(r=>r.source_id)])].map(source=>this.room.source(project,source));
+    const adapter=this.adapters.get(participant.adapter);
+    if(!adapter?.normalizeCapture)fail('client_unsupported','Adapter has no metadata-only capture reader');
+    const prepared=await adapter.prepare({dir,participant,policy:this.room.policy()});
+    const normalized=await adapter.normalizeCapture(prepared,{stdout:readFileSync(join(dir,'native-events.jsonl'),'utf8'),code:receipt.exit_code});
+    // Another operator may have retried, cancelled or recorded this job during inspection.
+    return this.store.tx(()=>{
+      const current=this.room.job(project,id);
+      if(current.status!==job.status||current.cancel_requested)fail('conflict','Job changed while verifying its capture');
+      this.store.event(id,'capture_reconciled',{actor_id:this.room.actor.id,prior_error_code:job.error_code,prior_error_message:job.error_message,new_model_calls:0});
+      return this.persistResponse(job,participant,packet,normalized,dir);
+    });
+  }
+  persistResponse(job,participant,packet,normalized,dir){
+      if(normalized.observed_model&&normalized.observed_model!==participant.model&&normalized.observed_model!==participant.model.split('/').at(-1))fail('model_unavailable','Client reported a different model than requested');
+      const response=validateResponse(normalized.value,{citations:packet.packet.allowed_citations,participants:packet.packet.discussion_participants.map(p=>p.id)});
+      for(const request of response.context_requests)if(request.kind==='read')this.room.source(job.project_id,request.source_id);
+      const changed=this.room.thread(job.project_id,job.thread_id).context_version!==packet.context_version||sourceFreshness(this.store,packet.source_snapshot).length>0;
+      const output={response,requested_model:participant.model,observed_model:normalized.observed_model??null,model_identity_verified:normalized.observed_model!==null&&normalized.observed_model!==undefined,model_identity_source:normalized.model_identity_source??null,diagnostics:normalized.diagnostics??[],usage:normalized.usage??null,usage_unknown_reason:normalized.usage_unknown_reason??null,terminal_state:normalized.terminal_state,session_id:normalized.session_id??null,stale_context:changed,completed_at:now()};
+      privateWrite(join(dir,'output.json'),JSON.stringify(output,null,2));
+      return this.store.tx(()=>{
+        const author={id:participant.id,name:participant.alias,role:'consultant'};
+        const message=this.room._post(job.project_id,job.thread_id,{body:response.body,kind:response.kind,reply_to:job.question_id,source_ids:response.citations,job_id:job.id,basis_context_version:packet.context_version},author);
+        this.store.run("UPDATE jobs SET status='succeeded',reply_id=?,stale_context=?,usage=?,completed_at=?,error_code=NULL,error_message=NULL WHERE id=?",message.id,changed?1:0,JSON.stringify(normalized.usage??null),now(),job.id);
+        if(response.proposed_decision&&!changed){
+          const d=response.proposed_decision,id=uuid();
+          this.store.run('INSERT INTO decisions VALUES(?,?,?,?,?,?,?,?,?,?,?)',id,uuid(),1,job.project_id,job.thread_id,d.statement,d.rationale,'proposed',JSON.stringify([...new Set([...d.citations,message.id])]),participant.id,now());
+        }
+        if(response.kind==='needs_context')this.store.run("UPDATE threads SET status='waiting_for_input' WHERE id=?",job.thread_id);
+        this.store.event(job.id,'succeeded',{reply_id:message.id,stale_context:changed,usage_available:normalized.usage!==null&&normalized.usage!==undefined});
+        this.store.run('DELETE FROM worker_claim WHERE job_id=?',job.id);
+        return {status:'succeeded',job:this.room.job(job.project_id,job.id),reply:this.room.message(job.project_id,message.id)};
+      });
   }
   queueFollowUps(project,questionId){
     const policy=this.room.policy();if(!policy.execution_enabled||policy.automatic_follow_up_rounds!==1)return [];

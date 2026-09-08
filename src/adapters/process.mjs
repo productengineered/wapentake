@@ -1,4 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process';
+import { openSync,closeSync,fstatSync,readFileSync } from 'node:fs';
 import { RoomError } from '../contracts.mjs';
 
 export const stripANSI=value=>value.replace(/\x1b\[[0-9;]*m/g,'');
@@ -21,10 +22,13 @@ export function processAlive(pid,identity=null,inspect=processIdentity) {
   const observed=inspect(pid);
   return observed===null||observed===identity;
 }
-export function runProcess(command,args,{cwd,env=safeEnvironment(),input='',timeoutMs=600000,maxBytes=2097152,signal,onSpawn,onCapture}={}) {
+export function runProcess(command,args,{cwd,env=safeEnvironment(),input='',timeoutMs=600000,maxBytes=2097152,signal,onSpawn,onCapture,stdoutFile}={}) {
   return new Promise((resolve,reject)=>{
     let stdout='',stderr='',size=0,reason=null,spawned=false,settled=false,killTimer;
-    const child=spawn(command,args,{cwd,env,shell:false,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe']});
+    // Some clients exit before flushing pipe-backed stdout. A new private regular
+    // file makes their native writes synchronous; still enforce the capture cap.
+    const outputFd=stdoutFile?openSync(stdoutFile,'wx',0o600):null;
+    const child=spawn(command,args,{cwd,env,shell:false,detached:process.platform!=='win32',stdio:['pipe',outputFd??'pipe','pipe']});
     const kill=(code,message)=>{
       if(reason)return;reason=new RoomError(code,message,{spawned});
       try{process.kill(process.platform==='win32'?child.pid:-child.pid,'SIGTERM');}catch{}
@@ -39,17 +43,26 @@ export function runProcess(command,args,{cwd,env=safeEnvironment(),input='',time
       try{onSpawn?.(child.pid);}catch(error){kill('storage_error',error.message);}
       if(signal?.aborted)abort();
     });
-    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
+    child.stdout?.setEncoding('utf8');child.stderr.setEncoding('utf8');
+    const fileWatch=outputFd===null?null:setInterval(()=>{
+      if(fstatSync(outputFd).size+size>maxBytes)kill('invalid_output','Client output exceeded the capture limit');
+    },100);fileWatch?.unref();
     const collect=(chunk,target)=>{
       size+=Buffer.byteLength(chunk);
       if(size>maxBytes){kill('invalid_output','Client output exceeded the capture limit');return;}
       if(target==='stdout')stdout+=chunk;else stderr=(stderr+chunk).slice(-16384);
     };
-    child.stdout.on('data',c=>collect(c,'stdout'));child.stderr.on('data',c=>collect(c,'stderr'));
+    child.stdout?.on('data',c=>collect(c,'stdout'));child.stderr.on('data',c=>collect(c,'stderr'));
     child.stdin.on('error',()=>{});child.stdin.end(input);
     const finish=(error,code,signalName)=>{
-      if(settled)return;settled=true;clearTimeout(timer);clearTimeout(killTimer);signal?.removeEventListener('abort',abort);
+      if(settled)return;settled=true;clearTimeout(timer);clearTimeout(killTimer);clearInterval(fileWatch);signal?.removeEventListener('abort',abort);
       if(reason&&spawned){try{process.kill(process.platform==='win32'?child.pid:-child.pid,'SIGKILL');}catch{}}
+      if(outputFd!==null){
+        try{
+          if(fstatSync(outputFd).size+size>maxBytes)error??=new RoomError('invalid_output','Client output exceeded the capture limit',{spawned});
+          else stdout=readFileSync(stdoutFile,'utf8');
+        }catch(e){error??=e;}finally{closeSync(outputFd);}
+      }
       const result={stdout,stderr:redact(stderr),code,signal:signalName,spawned};
       try{onCapture?.({...result,stdout:redact(stdout)});}catch(captureError){error??=captureError;}
       if(error)reject(error);else resolve(result);

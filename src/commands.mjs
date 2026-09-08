@@ -64,6 +64,7 @@ export async function execute(room,action,{project,thread,data={}}={},services={
     case 'jobs.get':keys(data,['id']);return room.job(project,data.id);
     case 'jobs.cancel':keys(data,['id']);return room.cancel(project,data.id);
     case 'jobs.retry':keys(data,['id','key']);return room.retry(project,data.id,data.key);
+    case 'jobs.reconcile-capture':keys(data,['id']);room.operator();return (services.worker??new Worker(room)).reconcileCapture(project,data.id);
     case 'jobs.recover':keys(data,['id','confirm_stopped']);return (services.worker??new Worker(room)).recover(project,data.id,{confirmStopped:data.confirm_stopped===true});
     case 'jobs.inspect':keys(data,['id']);room.operator();return (services.worker??new Worker(room)).inspectRecovery(project,data.id);
     case 'worker.once':room.operator();return (services.worker??new Worker(room)).runOnce();
