@@ -2,26 +2,25 @@
 
 A local conversation room for a human, active coding agents, GLM through OpenCode, and Astra through Codex. Messages, selected evidence and versioned decisions survive fresh agent sessions. The CLI and browser interface use the same command contracts.
 
-**Status:** development preview. Offline behavior and a six-call macOS pilot through the existing plans are verified. Linux and real consumer adoption remain pending; Codex does not report its resolved model identity. See [verification](docs/verification.md) for the exact evidence and open checks. Execution starts disabled. This package does not update task status, approve reviews, or merge code.
+**Status:** standalone Mac development preview. Offline behavior and a six-call pilot through the existing plans are verified. The application has its own repository, installation and update path; toolkits connect through optional adapters. Actual workflow adoption remains separate. Codex does not report its resolved model identity. See [verification](docs/verification.md) for evidence and limits. Execution starts disabled.
 
 ## Runtime and installation
 
-The verified runtime is Node **24.20.0 on macOS arm64**, including built-in SQLite and FTS5. Node 26.0.0 is also exercised during development. The runtime guard accepts Node 24.20+ within major 24, or major 26, on macOS/Linux. Linux verification remains pending; Windows is unsupported in this preview.
+The supported platform is **macOS**. Node **24.20.0 on macOS arm64** and Node **26.0.0** are verified, including built-in SQLite and FTS5. The runtime guard accepts Node 24.20+ within major 24, or major 26. Linux and Windows are outside the current release scope.
 
-There are no runtime npm dependencies. Build an archive from this directory:
-
-```sh
-npm pack --ignore-scripts
-```
-
-Copy the resulting versioned archive to another toolkit and install it into a separate tools directory. Keep the archive or its release location and SHA-256 alongside the adopting toolkit's dependency record.
+There are no runtime npm dependencies. From this repository:
 
 ```sh
-npm install --prefix .tools/agent-room --offline --ignore-scripts --no-audit --no-fund /absolute/path/productengineered-agent-room-0.1.0.tgz
-.tools/agent-room/node_modules/.bin/agent-room doctor --offline --runtime-only
+npm run install:local
+~/.local/bin/agent-room --version
+~/.local/bin/agent-room doctor --offline --runtime-only
 ```
 
-For source development, use `node packages/agent-room/bin/agent-room.mjs` from the toolkit root, or `node bin/agent-room.mjs` from this package. The examples below use the installed `agent-room` command.
+This packs the source and installs an independent copy in `~/.local/share/agent-room/releases/`, then switches the `current` link after an offline runtime check. The shared command is `~/.local/bin/agent-room`. If that directory is already on your `PATH`, use `agent-room` directly; otherwise use the full path. The installer does not edit shell configuration.
+
+Run the same installation command after updating this repository to apply an Agent Room update. Compatible toolkit adapters continue using the shared installation without a toolkit release. Running processes keep their existing release until restarted; the installer does not interrupt active consultations. See [installation and updates](docs/installation.md) for archive installs, retained versions and data handling.
+
+For source development, run `node bin/agent-room.mjs` from this repository. The examples below use the installed `agent-room` command.
 
 ## Open a local room
 
@@ -128,7 +127,7 @@ Export includes Markdown, JSON records and captured source blobs. Backup uses SQ
 
 ## Optional toolkit integration
 
-The core does not require a `.claude` tree, task store or sibling consumer. [Integration instructions](integrations/README.md) provide a small launcher and `/room` command. Copy those through the toolkit's normal upstream/sync process at the agreed adoption boundary.
+The core does not require a `.claude` tree, task store or sibling consumer. [Integration instructions](integrations/README.md) provide a small launcher and `/room` command. Only those small adapters belong in an adopting toolkit. The application and its updates stay in this repository and shared installation.
 
 Disagreement and stuck-work triggers default off. Enable them explicitly with `call --action policy.update --input-file policy-patch.json` as an operator, adding them to `enabled_triggers`. A disagreement event needs both review references. A stuck event needs two distinct attempted fixes and the failure signature. Events have causal keys, reserve bounded invitations, and never change task state. Example payloads are in [examples](examples/README.md).
 

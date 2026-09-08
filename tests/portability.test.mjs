@@ -33,6 +33,7 @@ test('packed module installs offline in a clean consumer and keeps state and pro
   const registered=cli(['project','register','--path',other]);assert.notEqual(registered.id,p.id);assert.deepEqual(cli(['search','--query','Needle'],other),[]);
   const exportPath=join(root,'export');cli(['export','--thread',thread,'--out',exportPath]);assert.match(readFileSync(join(exportPath,'thread.md'),'utf8'),/retain explicit original failures/);
   mkdirSync(join(consumer,'.claude','scripts'),{recursive:true});cpSync(join(source,'integrations','room.sh'),join(consumer,'.claude','scripts','room.sh'));
+  env.AGENT_ROOM_CLI=bin;
   const forwarded=JSON.parse(run('bash',[join(consumer,'.claude','scripts','room.sh'),'read','--thread',thread,'--operator','--state-dir',state]));assert.equal(forwarded[0].id,post.id);
   assert.equal(cli(['policy','show']).execution_enabled,false);
 });

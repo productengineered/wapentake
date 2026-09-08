@@ -7,7 +7,7 @@ import { openCodeEnvironment } from './adapters/opencode.mjs';
 
 export function runtimeReport(){
   const [major,minor,patch]=process.versions.node.split('.').map(Number);
-  const supported=(['darwin','linux'].includes(process.platform))&&((major===24&&(minor>20||(minor===20&&patch>=0)))||major===26);
+  const supported=process.platform==='darwin'&&((major===24&&(minor>20||(minor===20&&patch>=0)))||major===26);
   let sqlite=null,fts5=false,error=null;
   try{
     const db=new DatabaseSync(':memory:');sqlite=db.prepare('SELECT sqlite_version() version').get().version;

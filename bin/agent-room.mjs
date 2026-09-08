@@ -8,8 +8,10 @@ import { execute } from '../src/commands.mjs';
 import { doctor,runtimeReport } from '../src/doctor.mjs';
 import { fail,EXIT,parseJSON } from '../src/contracts.mjs';
 
-const help=`Agent Room 0.1.0 -- durable conversations for humans and coding agents
+const packageVersion=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version;
+const help=`Agent Room ${packageVersion} -- durable conversations for humans and coding agents
 
+  agent-room --version
   agent-room init --project <path> --operator [--name <name>]
   agent-room doctor --offline [--runtime-only]
   agent-room serve --operator [--port 0] [--worker]
@@ -44,7 +46,7 @@ AGENT_ROOM_TOKEN or --token-file <registered-agent-token-file>.
 --body-stdin and --body <text> are alternatives to --body-file.
 Opening, reading, searching and serving do not enable model execution.
 `;
-const booleanFlags=new Set(['operator','json','offline','runtime-only','working-tree','optional','body-stdin','once','inspect','confirm-stopped','worker','help','history']);
+const booleanFlags=new Set(['operator','json','offline','runtime-only','working-tree','optional','body-stdin','once','inspect','confirm-stopped','worker','help','history','version']);
 const valuedFlags=new Set(['state-dir','project','name','path','label','run-id','title','mode','task','thread','body','body-file','kind','reply-to','sources','to','key','token-file','id','offset','max-bytes','revision','after','limit','through','query','for','stable-id','status','statement','rationale','citations','expected-context-version','max-calls','automatic-follow-up-rounds','job','out','from','action','input-file','port']);
 function parse(argv){
   const flags={},positionals=[];
@@ -78,6 +80,7 @@ function locate(room,arg){
 function jsonFile(path){if(!path)fail('invalid_input','--input-file is required');const raw=readFileSync(path,'utf8');if(Buffer.byteLength(raw)>131072)fail('invalid_input','JSON input exceeds 128 KiB');return parseJSON(raw,'input file');}
 async function main(){
   const {flags:f,positionals}=parse(process.argv.slice(2));
+  if(f.version){if(positionals.length||Object.keys(f).length!==1)fail('invalid_input','Use --version by itself');emit({version:packageVersion});return;}
   if(f.help||!positionals.length){process.stdout.write(help);return;}
   const [command,sub]=positionals;if(positionals.length>2)fail('invalid_input','Unexpected positional arguments');
   if(sub&&!['project','actor','thread','source','context','constraint','decision','policy'].includes(command))fail('invalid_input','Unexpected positional argument');

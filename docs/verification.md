@@ -4,15 +4,16 @@ Development preview, 2026-09-08. The operator-approved macOS pilot used exactly 
 
 | Surface | Result | Evidence / limit |
 |---|---|---|
-| Node 26.0.0, macOS arm64 | 39 tests passed | `npm test`, including package/install fixture and conservative recovery/native-terminal cases |
-| Node 24.20.0, macOS arm64 | 39 tests passed | Official archive SHA-256 verified; same final test set |
+| Node 26.0.0, macOS arm64 | 41 tests passed | `npm test`, including package/install fixture and conservative recovery/native-terminal cases |
+| Node 24.20.0, macOS arm64 | 41 tests passed | Official archive SHA-256 verified; same final test set |
 | SQLite | 3.53.4, FTS5 available | Runtime doctor on both runtimes |
 | Codex 0.153.4 | Live calls completed | Live requested `gpt-6-astra` through ChatGPT login; two validated replies after one startup-notice rejection; resolved identity unreported |
 | OpenCode 1.18.18 | Three live replies validated | Saved Coding Plan route; exported session metadata confirms `zai-coding-plan/glm-5.3`; zero tool activity |
 | Browser | Passed | Disposable Chrome, Playwright 1.58.1, synthetic data, three fake calls, zero real calls |
 | Package portability | Passed | Pack, offline install, fresh-process post/read/decision/queue/export, second-project isolation, thin launcher |
-| Linux | Pending | Existing Podman machine failed to start: gvproxy socket unavailable; confirmed stopped afterward |
-| Toolkit regression suite | 25 suites passed | Isolated worktree baseline d0d04a1; includes instruction lint. Concurrent main cleanup changes are outside this result |
+| Shared Mac installation | Implemented | Two unchanged toolkit adapters follow a shared update; retained history, archive hash validation, unrelated-command refusal and rejected-update preservation |
+| Platforms | Mac scope confirmed | Linux and Windows are outside this release scope |
+| Historical toolkit regression suite | 25 suites passed | Isolated worktree baseline d0d04a1; includes instruction lint. Concurrent main cleanup changes are outside this result |
 | Local live pilot | Completed within six calls | Fresh agent process and fresh GLM session retrieved an accepted operational decision; [trace](live-pilot.md) |
 | Actual consumer adoption | Pending coordinated boundary | Portable install fixture passed; no real consumer modified |
 
@@ -54,4 +55,4 @@ The live trace records requested/observed identity, auth route, packet/configura
 
 The original discussion needed 37,839 bytes of required material and refused before launch at the 32,768-byte limit. A focused thread carried the approved decision and original approval message in 6,780 bytes. This is evidence for explicit scoping and persistence, not automatic summarization of arbitrary history. The 10,000-message retention case remains an offline fixture.
 
-Open limits: nested decision references and source bytes are not automatically expanded just because a decision cites them; attach/read required evidence explicitly. The stale-citation acceptance guard checks direct consultation message references, not transitive chains. The local OS user remains trusted; application capabilities do not isolate hostile processes under that same account. Linux and actual toolkit/consumer adoption remain unverified.
+Open limits: nested decision references and source bytes are not automatically expanded just because a decision cites them; attach/read required evidence explicitly. The stale-citation acceptance guard checks direct consultation message references, not transitive chains. The local OS user remains trusted; application capabilities do not isolate hostile processes under that same account. Actual toolkit/consumer workflow adoption remains unverified; Linux is outside scope.

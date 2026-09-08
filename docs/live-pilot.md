@@ -28,7 +28,7 @@ Initial evidence: `src/context.mjs` (required), `src/worker.mjs` (optional bound
 5. Attach a new agent capability and use fresh CLI processes to retrieve the retained decision, rationale, constraints and original evidence. Its acknowledgment must not alter another actor's inbox.
 6. Pause execution, export and back up the trace. Record useful/unused contributions, native usage when present, calls, latency, packet bytes, stale-context results, uncertainty and the human-linked outcome.
 
-`examples/prepare-pilot.mjs` creates an inspectable state and packets without inference and prints only paths/IDs/hashes. Preparation does not authorize execution. Real consumer adoption through the thin integration remains a coordinated boundary with the toolkit cleanup.
+`examples/prepare-pilot.mjs` creates an inspectable state and packets without inference and prints only paths/IDs/hashes. Preparation does not authorize execution. Real consumer adoption is a separate change to the adopting toolkit; the core is now independently packaged.
 
 
 ## Observed calls
