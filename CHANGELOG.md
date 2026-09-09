@@ -5,6 +5,7 @@
 - Rename the package to `@productengineered/wapentake`, command to `wapentake`, and browser interface to Wapentake.
 - Use `WAPENTAKE_*` settings, Wapentake installation/configuration/state paths and the `/wapentake` integration template.
 - Retain database schema 2, export schema 2 and model configuration schema 1. This is a flat rename with no legacy command or path aliases.
+- Add Mac CI, local secret hooks, trusted repository and CodeRabbit review gates, dependency checks, and verified draft releases with protected version tags. Publication remains manual.
 
 ## 0.2.0 -- consumer execution and model profiles
 

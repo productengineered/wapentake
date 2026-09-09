@@ -2,6 +2,8 @@
 
 Wapentake is a standalone Mac utility. Read `README.md` and `docs/implementation-status.md` for setup, scope and current evidence.
 
+Follow `docs/development.md` for local secret hooks, required CI, review dispositions and the manual draft-release workflow. Changes to `main` go through a reviewed pull request.
+
 - Keep the core independent of toolkit repositories and task stores. Toolkit-specific workflow instructions belong in optional `integrations/` adapters.
 - Keep conversation databases, credentials, captured client output and local settings outside the repository and release archives.
 - Model calls require the operator's explicit bounded allowance. Count launched failures and retries; do not infer a new allowance from development or test requests.
