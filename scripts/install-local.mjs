@@ -3,18 +3,18 @@ import { spawnSync } from 'node:child_process';
 import { createHash,randomUUID } from 'node:crypto';
 import { existsSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,readlinkSync,realpathSync,renameSync,rmSync,statSync,symlinkSync,writeFileSync } from 'node:fs';
 import { homedir,tmpdir } from 'node:os';
-import { dirname,join,resolve,sep } from 'node:path';
+import { basename,dirname,join,resolve,sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runtimeReport } from '../src/doctor.mjs';
 
-const name='@productengineered/agent-room';
-const help=`Install or update the shared Mac Agent Room command.
+const name='@productengineered/wapentake';
+const help=`Install or update the shared Mac Wapentake command.
 
   npm run install:local
-  npm run install:local -- --from /path/agent-room.tgz --sha256 HASH
+  npm run install:local -- --from /path/wapentake.tgz --sha256 HASH
 
 Options: --from ARCHIVE, --sha256 HASH, --install-root PATH, --bin-dir PATH.
-Defaults: ~/.local/share/agent-room and ~/.local/bin.
+Defaults: ~/.local/share/wapentake and ~/.local/bin.
 No model calls, toolkit changes or room-data migrations are performed.
 `;
 function options(argv){
@@ -36,9 +36,9 @@ function run(command,args,cwd){
 function entry(path){try{return lstatSync(path);}catch(error){if(error.code==='ENOENT')return null;throw error;}}
 function currentRelease(root){
   const path=join(root,'current'),info=entry(path);if(!info)return null;
-  if(!info.isSymbolicLink())throw Error('The current installation path is not an Agent Room release link');
-  const target=resolve(root,readlinkSync(path));
-  if(!target.startsWith(join(root,'releases')+sep))throw Error('The current link points outside Agent Room releases');
+  if(!info.isSymbolicLink())throw Error('The current installation path is not a Wapentake release link');
+  const target=realpathSync(path), physicalRoot=realpathSync(root);
+  if(!target.startsWith(join(physicalRoot,'releases')+sep))throw Error('The current link points outside Wapentake releases');
   return target;
 }
 function checkBin(path,target){
@@ -46,27 +46,33 @@ function checkBin(path,target){
   if(info&&(!info.isSymbolicLink()||resolve(dirname(path),readlinkSync(path))!==target))throw Error(`Refusing to replace an unrelated command at ${path}`);
   return Boolean(info);
 }
+function installationRoot(input=join(homedir(),'.local','share','wapentake')){
+  const path=resolve(input),tail=[];let ancestor=path;
+  while(!entry(ancestor)){tail.unshift(basename(ancestor));ancestor=dirname(ancestor);}
+  return join(realpathSync(ancestor),...tail);
+}
 function inspectRelease(path){
-  const pkg=join(path,'node_modules','@productengineered','agent-room'),manifest=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));
-  if(manifest.name!==name||!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.version))throw Error('Archive is not a versioned Agent Room package');
-  if(realpathSync(join(path,'node_modules','.bin','agent-room'))!==realpathSync(join(pkg,'bin','agent-room.mjs')))throw Error('Installed command does not resolve to the verified Agent Room entry point');
-  const report=JSON.parse(run(process.execPath,[join(pkg,'bin','agent-room.mjs'),'doctor','--offline','--runtime-only'],pkg));
+  const pkg=join(path,'node_modules','@productengineered','wapentake'),manifest=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));
+  if(manifest.name!==name||!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.version))throw Error('Archive is not a versioned Wapentake package');
+  if(realpathSync(join(path,'node_modules','.bin','wapentake'))!==realpathSync(join(pkg,'bin','wapentake.mjs')))throw Error('Installed command does not resolve to the verified Wapentake entry point');
+  const report=JSON.parse(run(process.execPath,[join(pkg,'bin','wapentake.mjs'),'doctor','--offline','--runtime-only'],pkg));
   if(!report.ready_offline||report.inference_performed!==false)throw Error('Installed package failed its offline runtime check');
   return manifest;
 }
 async function main(){
   const args=options(process.argv.slice(2));if(args.help){process.stdout.write(help);return;}
   if(!runtimeReport().supported_runtime)throw Error('Install with supported Node 24.20+ or 26 on macOS');
-  const root=resolve(args['install-root']??join(homedir(),'.local','share','agent-room'));
-  const binDir=resolve(args['bin-dir']??join(homedir(),'.local','bin')),bin=join(binDir,'agent-room');
-  const target=join(root,'current','node_modules','.bin','agent-room');
-  checkBin(bin,target);currentRelease(root);
+  const root=installationRoot(args['install-root']);
+  const binDir=resolve(args['bin-dir']??join(homedir(),'.local','bin')),bin=join(binDir,'wapentake');
+  const target=join(root,'current','node_modules','.bin','wapentake');
+  checkBin(bin,target);
+  currentRelease(root);
   mkdirSync(root,{recursive:true,mode:0o700});const lock=join(root,'.install-lock');
   try{mkdirSync(lock,{mode:0o700});}catch(error){if(error.code==='EEXIST')throw Error('Another installation holds .install-lock; inspect it before removing a stopped installation lock');throw error;}
   let temporary,stage,switchLink;
   try{
     writeFileSync(join(lock,'owner.json'),JSON.stringify({pid:process.pid,started_at:new Date().toISOString()}),{mode:0o600});
-    temporary=mkdtempSync(join(tmpdir(),'agent-room-install-'));
+    temporary=mkdtempSync(join(tmpdir(),'wapentake-install-'));
     const cache=join(root,'cache'),releases=join(root,'releases');mkdirSync(releases,{recursive:true,mode:0o700});
     let archive;
     if(args.from){archive=realpathSync(resolve(args.from));if(!statSync(archive).isFile())throw Error('--from must name a package archive file');}
@@ -90,7 +96,7 @@ async function main(){
     const previous=currentRelease(root);mkdirSync(binDir,{recursive:true,mode:0o700});
     if(!checkBin(bin,target))symlinkSync(target,bin);
     switchLink=join(root,`.current-${randomUUID()}`);symlinkSync(release,switchLink);renameSync(switchLink,join(root,'current'));switchLink=null;
-    process.stdout.write(JSON.stringify({status:previous===release?'already_current':'installed',version:manifest.version,archive_sha256:hash,command:bin,release,previous_release:previous,running_processes_restarted:false,room_data_changed:false,inference_performed:false})+'\n');
+    process.stdout.write(JSON.stringify({status:previous===release?'already_current':'installed',name,version:manifest.version,archive_sha256:hash,command:bin,release,previous_release:previous,running_processes_restarted:false,room_data_changed:false,inference_performed:false})+'\n');
   }finally{
     if(switchLink)rmSync(switchLink,{force:true});
     if(stage)rmSync(stage,{recursive:true,force:true});
@@ -98,4 +104,4 @@ async function main(){
     rmSync(lock,{recursive:true,force:true});
   }
 }
-main().catch(error=>{process.stderr.write(`Agent Room installation failed: ${error.message}\n`);process.exitCode=1;});
+if(process.argv[1]&&entry(process.argv[1])&&realpathSync(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{process.stderr.write(`Wapentake installation failed: ${error.message}\n`);process.exitCode=1;});

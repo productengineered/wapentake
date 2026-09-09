@@ -1,5 +1,7 @@
 # Repository provenance
 
+> Historical Agent Room record. The project is now Wapentake; see [installation](installation.md) for current commands and paths.
+
 On 2026-09-08, Brandon chose to ship Agent Room independently so one Mac installation could serve multiple toolkits without requiring toolkit releases for application changes.
 
 The repository was extracted from `packages/agent-room/` on the `codex/agent-room` development branch of `claude-code-fullstack-webapp-toolkit`. Git subtree extraction retained only this package and its three development commits, with the package at the new repository root.

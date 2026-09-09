@@ -1,6 +1,6 @@
-# Agent Room working rules
+# Wapentake working rules
 
-Agent Room is a standalone Mac utility. Read `README.md` and `docs/implementation-status.md` for setup, scope and current evidence.
+Wapentake is a standalone Mac utility. Read `README.md` and `docs/implementation-status.md` for setup, scope and current evidence.
 
 - Keep the core independent of toolkit repositories and task stores. Toolkit-specific workflow instructions belong in optional `integrations/` adapters.
 - Keep conversation databases, credentials, captured client output and local settings outside the repository and release archives.

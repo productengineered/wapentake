@@ -3,7 +3,7 @@ import { buildPacket } from './context.mjs';
 import { Worker } from './worker.mjs';
 
 export function workflowEvent(room,project,options){
-  keys(options,['kind','task_id','body','source_ids','attempts','failure_signature','to','key'],'workflow event');
+  keys(options,['kind','task_id','body','source_ids','attempts','failure_signature','to','key','model_profile'],'workflow event');
   if(!['disagreement','stuck'].includes(options.kind))fail('invalid_input','Supported workflow triggers are disagreement and stuck');
   room.project(project);text(options.task_id,'task_id',200);text(options.body,'event body',8000);
   if(!room.policy().enabled_triggers.includes(options.kind))return {status:'disabled',trigger:options.kind,advisory:true,task_changed:false};
@@ -15,11 +15,12 @@ export function workflowEvent(room,project,options){
   }
   return room.store.idempotent(project,room.actor.id,'event',options.key,options,()=>{
     const thread=room.openThread(project,{title:`${options.task_id}: ${options.kind==='disagreement'?'Review disagreement':'New hypothesis'}`,task_ids:[options.task_id],mode:'independent',key:`event-thread:${options.key}`});
-    const ask=room.ask(project,thread.id,{body:options.body,to:options.to??(options.kind==='stuck'?['astra']:['glm','astra']),source_ids:refs,key:`event-ask:${options.key}`});
+    const ask=room.ask(project,thread.id,{body:options.body,to:options.to??(options.kind==='stuck'?['astra']:['glm','astra']),source_ids:refs,key:`event-ask:${options.key}`,...(options.model_profile===undefined?{}:{model_profile:options.model_profile})});
     return {...ask,thread_id:thread.id,advisory:true,task_changed:false};
   });
 }
 export async function execute(room,action,{project,thread,data={}}={},services={}){
+  room.refreshActor();
   object(data,'command data');
   switch(action){
     case 'snapshot':{
@@ -38,6 +39,7 @@ export async function execute(room,action,{project,thread,data={}}={},services={
     case 'projects.register':return room.register(data);
     case 'projects.move':keys(data,['path']);return room.moveProject(project,data.path);
     case 'actors.attach':return room.attachActor(project,data);
+    case 'actors.revoke':keys(data,['id']);return room.revokeActor(project,data.id);
     case 'participants.list':return room.participants(project);
     case 'threads.list':return room.threads(project);
     case 'threads.open':return room.openThread(project,data);
@@ -57,7 +59,7 @@ export async function execute(room,action,{project,thread,data={}}={},services={
     case 'decisions.list':keys(data,['history']);return room.decisions(project,thread,data);
     case 'decisions.set':return room.decide(project,thread,data);
     case 'ask':return room.ask(project,thread,data);
-    case 'context.preview':keys(data,['participant']);return buildPacket(room,project,thread,data.participant??'astra');
+    case 'context.preview':keys(data,['participant','model_profile']);return buildPacket(room,project,thread,data.participant??'astra',{modelProfile:data.model_profile});
     case 'policy.show':return room.policy();
     case 'policy.update':return room.setPolicy(data);
     case 'jobs.list':keys(data,['limit']);return room.jobs(project,data.limit??100);
@@ -65,9 +67,16 @@ export async function execute(room,action,{project,thread,data={}}={},services={
     case 'jobs.cancel':keys(data,['id']);return room.cancel(project,data.id);
     case 'jobs.retry':keys(data,['id','key']);return room.retry(project,data.id,data.key);
     case 'jobs.reconcile-capture':keys(data,['id']);room.operator();return (services.worker??new Worker(room)).reconcileCapture(project,data.id);
-    case 'jobs.recover':keys(data,['id','confirm_stopped']);return (services.worker??new Worker(room)).recover(project,data.id,{confirmStopped:data.confirm_stopped===true});
+    case 'jobs.recover':keys(data,['id','confirm_stopped']);room.operator();return (services.worker??new Worker(room)).recover(project,data.id,{confirmStopped:data.confirm_stopped===true});
     case 'jobs.inspect':keys(data,['id']);room.operator();return (services.worker??new Worker(room)).inspectRecovery(project,data.id);
     case 'worker.once':room.operator();return (services.worker??new Worker(room)).runOnce();
+    case 'worker.job': {
+      keys(data,['id']);
+      room.authorizeJob(project,data.id);
+      // A server's injected worker has operator authority. Reuse only its adapters,
+      // never its actor, when executing a request made with a runner capability.
+      return new Worker(room,services.worker?{adapters:services.worker.adapters}:{}).runJob(project,data.id);
+    }
     case 'usage':return room.usage(project);
     case 'event':return workflowEvent(room,project,data);
     case 'export':return room.exportThread(project,thread);

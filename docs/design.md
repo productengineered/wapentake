@@ -1,5 +1,7 @@
 > Archived design from 2026-09-07, before the implementation, Mac-only scope and standalone repository decision. Read `README.md` and `implementation-status.md` for current behavior and support. The historical proposal below is not an execution allowance.
 
+> Historical Agent Room record. The project is now Wapentake; see [installation](installation.md) for current commands and paths.
+
 # Persistent Agent Room -- implementation design
 
 **Date:** 2026-09-07  
@@ -87,16 +89,16 @@ These are source observations at the baseline revision, not claims that the prop
 
 | Existing component | What it provides | Room integration |
 |---|---|---|
-| [review-session.ts](../../.claude/scripts/review-session.ts#L14) | OpenCode invocation, scoped diff input, consumed artifacts, saved model output | Use its invocation experience and artifacts. Keep the room adapter separate from its verdict parser. |
-| [OpenAI adjudication node](../../.claude/scripts/review-session.ts#L66) | A third-vendor response to two reviewers' artifacts; currently pinned to `openai/gpt-5.5` | Attach the artifacts to a room thread. The new Astra participant gets its own explicit configuration. |
-| [build-story disagreement path](../../.claude/commands/build-story.md#L425) | Coordinator identifies an explicit review disagreement | Emit one idempotent advisory room event with both artifact references. |
-| [build-story recovery](../../.claude/commands/build-story.md#L714) | Resume/repair/escalation procedure | Optionally ask the room for a new hypothesis after repeated failure. |
-| [context-usage.sh](../../.claude/scripts/context-usage.sh#L1) | Claude transcript-derived usage, including a documented one-turn lag | Keep for active Claude sessions. Do not use its default million-token denominator for other providers. |
-| [workflow map](../../.claude/docs/workflow-map.md#L1) | Canonical application stages and human boundaries | Room outcomes link back to these stages; they do not advance them. |
-| [retro command](../../.claude/commands/retro.md#L1) | Keep/tune/cut review of workflow contribution | Add a room contribution summary once the pilot produces useful data. |
-| [sync-toolkit.sh](../../tools/sync-toolkit.sh#L199) | Copies toolkit-owned files to consumers | Distribute the thin toolkit integration and example configuration. Install the room core as its own versioned package; runtime history and active configuration stay outside the sync tree. |
+| review-session.ts (original toolkit reference: `../../.claude/scripts/review-session.ts#L14`) | OpenCode invocation, scoped diff input, consumed artifacts, saved model output | Use its invocation experience and artifacts. Keep the room adapter separate from its verdict parser. |
+| OpenAI adjudication node (original toolkit reference: `../../.claude/scripts/review-session.ts#L66`) | A third-vendor response to two reviewers' artifacts; currently pinned to `openai/gpt-5.5` | Attach the artifacts to a room thread. The new Astra participant gets its own explicit configuration. |
+| build-story disagreement path (original toolkit reference: `../../.claude/commands/build-story.md#L425`) | Coordinator identifies an explicit review disagreement | Emit one idempotent advisory room event with both artifact references. |
+| build-story recovery (original toolkit reference: `../../.claude/commands/build-story.md#L714`) | Resume/repair/escalation procedure | Optionally ask the room for a new hypothesis after repeated failure. |
+| context-usage.sh (original toolkit reference: `../../.claude/scripts/context-usage.sh#L1`) | Claude transcript-derived usage, including a documented one-turn lag | Keep for active Claude sessions. Do not use its default million-token denominator for other providers. |
+| workflow map (original toolkit reference: `../../.claude/docs/workflow-map.md#L1`) | Canonical application stages and human boundaries | Room outcomes link back to these stages; they do not advance them. |
+| retro command (original toolkit reference: `../../.claude/commands/retro.md#L1`) | Keep/tune/cut review of workflow contribution | Add a room contribution summary once the pilot produces useful data. |
+| sync-toolkit.sh (original toolkit reference: `../../tools/sync-toolkit.sh#L199`) | Copies toolkit-owned files to consumers | Distribute the thin toolkit integration and example configuration. Install the room core as its own versioned package; runtime history and active configuration stay outside the sync tree. |
 
-The second assessment found real consumer review contributions and recommended small repairs proportionate to the single-operator threat model. This design follows that scope. It does not require repairing every audit finding before an advisory room can be piloted. [Second-pass assessment](second-pass-consumer-trace-2026-09-06.md)
+The second assessment found real consumer review contributions and recommended small repairs proportionate to the single-operator threat model. This design follows that scope. It does not require repairing every audit finding before an advisory room can be piloted. Second-pass assessment (original toolkit reference: `second-pass-consumer-trace-2026-09-06.md`)
 
 ## 4. Architecture and ownership
 
@@ -650,7 +652,7 @@ Give the package its own version independently of the parent toolkit's `VERSION`
 
 The current toolkit sync traverses `.claude`; it does not automatically distribute `packages/agent-room/`. Adoption must explicitly install the package and then its thin integration. The wrapper checks the installed version/capabilities and explains missing installation rather than downloading or invoking a model implicitly. Start with one source of truth here; extracting the package into its own repository later remains possible without changing its CLI contract.
 
-Keep database migrations in the shipped code, but databases and operator configuration in external state as specified in section 4.2. Each registered project retains a separate scope; reusing the package does not automatically share conversations between toolkits. Package archives and toolkit sync must exclude runtime databases, captured source blobs, active configuration and credentials. [Sync collection](../../tools/sync-toolkit.sh#L199)
+Keep database migrations in the shipped code, but databases and operator configuration in external state as specified in section 4.2. Each registered project retains a separate scope; reusing the package does not automatically share conversations between toolkits. Package archives and toolkit sync must exclude runtime databases, captured source blobs, active configuration and credentials. Sync collection (original toolkit reference: `../../tools/sync-toolkit.sh#L199`)
 
 ### 12.2 Adoption sequence
 

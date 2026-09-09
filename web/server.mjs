@@ -11,9 +11,9 @@ const assets=new Map([
   ['/styles.css',['styles.css','text/css; charset=utf-8']],
 ]);
 const statusCode={auth_required:401,forbidden:403,not_found:404,conflict:409,storage_error:500};
-export async function serve({store,token,port=0,runWorker=false,worker:injectedWorker}){
+export async function serve({store,token,port=0,runWorker=false,worker:injectedWorker,modelsFile,modelProfile}){
   integer(port,'port',0,65535);
-  const operator=new Room(store,token);operator.operator();
+  const operator=new Room(store,token,{modelsFile,modelProfile});operator.operator();
   const worker=injectedWorker??new Worker(operator);
   let running=false,closing=false,timer=null,inFlight=null,lastResult=null,origin;
   const workerState=()=>({running,active:worker.active,last_result:lastResult});
@@ -38,7 +38,7 @@ export async function serve({store,token,port=0,runWorker=false,worker:injectedW
         if(!req.headers['content-type']?.startsWith('application/json'))fail('invalid_input','JSON content type is required');
         if(Number(req.headers['content-length']??0)>131072)fail('invalid_input','Request exceeds 128 KiB');
         const bearer=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]+)$/)?.[1];
-        const room=new Room(store,bearer);
+        const room=new Room(store,bearer,{modelsFile,modelProfile});
         let size=0,chunks=[];
         for await(const chunk of req){size+=chunk.length;if(size>131072)fail('invalid_input','Request exceeds 128 KiB');chunks.push(chunk);}
         let input;try{input=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{fail('invalid_input','Malformed JSON request');}

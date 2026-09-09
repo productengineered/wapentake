@@ -1,6 +1,6 @@
 # Event examples
 
-Replace example source IDs with captured source/message IDs in the current project. Store event bodies in UTF-8 JSON files and invoke `agent-room event --input-file event.json` with the run's agent capability. The triggers must be explicitly enabled in policy first. No example executes a consultant by itself.
+Replace example source IDs with captured source/message IDs in the current project. Store event bodies in UTF-8 JSON files and invoke `wapentake event --input-file event.json` with the run's agent capability. The triggers must be explicitly enabled in policy first. No example executes a consultant by itself.
 
 Disagreement:
 

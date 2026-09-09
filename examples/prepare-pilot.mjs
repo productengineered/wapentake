@@ -14,7 +14,7 @@ if(existsSync(state))throw Error('Use a new dedicated pilot state directory');
 const store=new Store(state,{initialize:true});
 try{
   const operator=store.ensureOperator('Local pilot operator'),room=new Room(store,readFileSync(operator.tokenPath,'utf8').trim());
-  const project=room.register({path:projectPath,label:'Agent Room implementation pilot'});
+  const project=room.register({path:projectPath,label:'Wapentake implementation pilot'});
   room.setPolicy({execution_enabled:false,max_calls_per_day:6,max_calls_per_thread:6,automatic_follow_up_rounds:0,timeout_seconds:300});
   const actor=room.attachActor(project.id,{name:'codex:pilot-preparation',run_id:'initial'}),agent=new Room(store,readFileSync(actor.token_file,'utf8').trim());
   const thread=agent.openThread(project.id,{title:'Retain rationale across fresh sessions',mode:'independent',key:'pilot-thread'}),sources=[];

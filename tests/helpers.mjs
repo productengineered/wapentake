@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store,Room } from '../src/room.mjs';
 export function fixture(t) {
-  const root=mkdtempSync(join(tmpdir(),'agent-room-test-')),state=join(root,'state'),repo=join(root,'repo');
+  const root=mkdtempSync(join(tmpdir(),'wapentake-test-')),state=join(root,'state'),repo=join(root,'repo');
   mkdirSync(repo);
   const store=new Store(state,{initialize:true});
   const operator=store.ensureOperator('Test operator'),token=readFileSync(operator.tokenPath,'utf8').trim();

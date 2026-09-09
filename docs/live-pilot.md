@@ -1,5 +1,7 @@
 # Live pilot record
 
+> Historical Agent Room record. The project is now Wapentake; see [installation](installation.md) for current commands and paths.
+
 Status: completed on 2026-09-08 within the operator's six-call allowance. Five responses were validated into the room; one earlier Astra importer failure remains recorded and charged. Execution is paused, automatic follow-up is off, and no allowance remains. The operator's existing pilot approval was recorded as an accepted operational decision; all three consultant design proposals remain proposed.
 
 This was a local macOS pilot through saved GLM Coding Plan and ChatGPT logins. It verifies the observed client paths and explicit fresh-session retrieval. It does not establish production deployment, Linux support, actual consumer adoption or automatic inclusion of every nested reference/source byte.

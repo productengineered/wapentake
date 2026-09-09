@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "glm": { "model": "zai-coding-plan/glm-5.3" },
+    "astra": { "model": "gpt-6-astra", "reasoning_effort": "high" },
+    "adjudicator": { "model": "openai/gpt-5.6-sol" }
+  },
+  "profiles": {
+    "toolkit": {},
+    "5wth-ops": {}
+  }
+}

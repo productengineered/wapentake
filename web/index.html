@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Room</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wapentake</title><link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script></head>
 <body>
-<header class="topbar"><a class="brand" href="/" aria-label="Agent Room home"><span class="mark" aria-hidden="true">a<span>r</span></span>Agent Room</a><span class="tagline">A shared place to think.</span><div class="connection"><span class="dot"></span>Local workspace <span id="identity" class="pill">Connecting</span></div></header>
+<header class="topbar"><a class="brand" href="/" aria-label="Wapentake home"><span class="mark" aria-hidden="true">W</span>Wapentake</a><span class="tagline">A shared place to think.</span><div class="connection"><span class="dot"></span>Local workspace <span id="identity" class="pill">Connecting</span></div></header>
 <div id="notice" class="notice" role="status" hidden></div>
 <main id="workspace" class="workspace" hidden>
   <aside class="sidebar">
@@ -19,7 +19,7 @@
       <div class="conversation-heading"><div><div class="eyebrow" id="thread-mode"></div><h1 id="thread-title"></h1><div id="participants" class="participant-list"></div></div><div class="heading-actions"><button id="export" class="button subtle">Export</button><label class="sr-only" for="thread-status">Conversation status</label><select id="thread-status"><option value="open">Open</option><option value="waiting_for_input">Needs input</option><option value="resolved">Resolved</option><option value="archived">Archived</option></select></div></div>
       <div id="history-note" class="muted small history-note" hidden>Showing the latest 200 messages. Search or export to read earlier history.</div>
       <div id="messages" class="messages" aria-live="polite"></div>
-      <div class="composer"><label for="message-body" class="sr-only">Your message</label><textarea id="message-body" rows="3" placeholder="Add context, ask a question, or challenge an assumption…"></textarea><div class="composer-actions"><div class="invite-options"><span class="muted small">Invite</span><label class="recipient"><input id="invite-glm" type="checkbox" checked>GLM 5.3</label><label class="recipient"><input id="invite-astra" type="checkbox" checked>Astra</label></div><div><button id="post" class="button subtle">Post</button><button id="ask" class="button primary">Ask consultants ↗</button></div></div><p class="composer-note">Post adds a message. Ask reserves calls in the local allowance.</p></div>
+      <div class="composer"><label for="message-body" class="sr-only">Your message</label><textarea id="message-body" rows="3" placeholder="Add context, ask a question, or challenge an assumption…"></textarea><div class="composer-actions"><div class="invite-options"><span class="muted small">Invite</span><label class="recipient"><input id="invite-glm" type="checkbox" checked>GLM</label><label class="recipient"><input id="invite-astra" type="checkbox" checked>Astra</label></div><div><button id="post" class="button subtle">Post</button><button id="ask" class="button primary">Ask consultants ↗</button></div></div><p class="composer-note">Post adds a message. Ask reserves calls in the local allowance.</p></div>
     </div>
   </section>
   <aside class="context-panel"><div class="context-top"><div class="eyebrow">Shared understanding</div><h2>Context & decisions</h2><button id="preview" class="button subtle wide">Preview consultant context</button></div>
@@ -29,6 +29,6 @@
     <section class="activity-section"><div class="section-label">Consultant activity</div><div class="worker-controls"><span id="execution-status" class="pill"></span><button id="worker-toggle" class="text-button">Start worker</button></div><div id="jobs" class="card-list"></div></section>
   </aside>
 </main>
-<div id="connect" class="connect" hidden><h1>Open your local room</h1><p>Use the session link printed by <code>agent-room serve --operator</code>, or enter your capability below.</p><form id="connect-form"><label for="capability">Session capability</label><input id="capability" type="password" autocomplete="off" required><button class="button primary">Connect</button></form></div>
+<div id="connect" class="connect" hidden><h1>Open your local room</h1><p>Use the session link printed by <code>wapentake serve --operator</code>, or enter your capability below.</p><form id="connect-form"><label for="capability">Session capability</label><input id="capability" type="password" autocomplete="off" required><button class="button primary">Connect</button></form></div>
 <dialog id="dialog"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="dialog-close" class="icon-button" aria-label="Close dialog">×</button></div><div id="dialog-content"></div></dialog>
 </body></html>

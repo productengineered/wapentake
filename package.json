@@ -1,18 +1,46 @@
 {
-  "name": "@productengineered/agent-room",
-  "version": "0.1.0",
+  "name": "@productengineered/wapentake",
+  "version": "0.3.0",
   "description": "Local, durable conversations for humans and coding agents",
   "type": "module",
   "private": true,
-  "os": ["darwin"],
-  "engines": { "node": ">=24.20.0 <25 || >=26.0.0 <27" },
-  "bin": { "agent-room": "bin/agent-room.mjs" },
-  "exports": { ".": "./src/room.mjs", "./worker": "./src/worker.mjs", "./adapters": "./src/adapters/index.mjs" },
-  "files": ["bin", "src", "web", "migrations", "schemas", "prompts", "integrations", "examples", "scripts", "README.md", "CHANGELOG.md", "docs"],
+  "os": [
+    "darwin"
+  ],
+  "engines": {
+    "node": ">=24.20.0 <25 || >=26.0.0 <27"
+  },
+  "bin": {
+    "wapentake": "bin/wapentake.mjs"
+  },
+  "exports": {
+    ".": "./src/room.mjs",
+    "./worker": "./src/worker.mjs",
+    "./adapters": "./src/adapters/index.mjs",
+    "./models": "./src/models.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "web",
+    "migrations",
+    "schemas",
+    "prompts",
+    "integrations",
+    "examples",
+    "scripts",
+    "README.md",
+    "CHANGELOG.md",
+    "docs"
+  ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
-    "start": "node bin/agent-room.mjs serve --operator",
-    "doctor": "node bin/agent-room.mjs doctor --offline --operator",
+    "test": "node --import ./tests/isolate-config.mjs --test --test-concurrency=1 tests/*.test.mjs",
+    "start": "node bin/wapentake.mjs serve --operator",
+    "doctor": "node bin/wapentake.mjs doctor --offline --operator",
     "install:local": "node scripts/install-local.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/productengineered/wapentake.git"
   }
 }

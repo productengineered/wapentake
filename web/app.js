@@ -1,9 +1,9 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const el=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;};
-let token=sessionStorage.getItem('agent-room-token'),project=sessionStorage.getItem('agent-room-project'),thread=sessionStorage.getItem('agent-room-thread'),state=null,worker={running:false},busy=false,refreshing=false,renderKey='';
+let token=sessionStorage.getItem('wapentake-token'),project=sessionStorage.getItem('wapentake-project'),thread=sessionStorage.getItem('wapentake-thread'),state=null,worker={running:false},busy=false,refreshing=false,renderKey='';
 const fragment=new URLSearchParams(location.hash.slice(1));
-if(fragment.has('token')){token=fragment.get('token');sessionStorage.setItem('agent-room-token',token);history.replaceState(null,'',location.pathname);}
+if(fragment.has('token')){token=fragment.get('token');sessionStorage.setItem('wapentake-token',token);history.replaceState(null,'',location.pathname);}
 const requestKey=()=>crypto.randomUUID();
 function notice(message,error=false){$('notice').textContent=message;$('notice').hidden=!message;$('notice').classList.toggle('error',error);}
 async function call(action,data={},scope={}){
@@ -105,13 +105,13 @@ async function refresh(force=false){
     for(const id of ['preview','add-constraint','add-source','add-decision'])$(id).disabled=!thread;
     if(thread&&state.thread){
       $('thread-title').textContent=state.thread.title;$('thread-mode').textContent=state.thread.mode==='independent'?'Independent perspectives':'Open brainstorm';$('thread-status').value=state.thread.status;
-      $('participants').replaceChildren(...[['H','You'],['G','GLM 5.3'],['A','Astra']].map(([letter,name])=>{const span=el('span');span.append(el('i','mini-avatar',letter),document.createTextNode(name));return span;}));
+      $('participants').replaceChildren(...[['H','You'],['G','GLM'],['A','Astra']].map(([letter,name])=>{const span=el('span');span.append(el('i','mini-avatar',letter),document.createTextNode(name));return span;}));
       const nextKey=JSON.stringify([thread,state.messages,state.constraints,state.sources,state.decisions]);
       if(force||nextKey!==renderKey){renderMessages();renderContext();renderKey=nextKey;}
       const latest=state.messages.at(-1)?.seq;if(latest&&document.visibilityState==='visible')await call('ack',{through:latest});
     }
-    if(project)sessionStorage.setItem('agent-room-project',project);else sessionStorage.removeItem('agent-room-project');
-    if(thread)sessionStorage.setItem('agent-room-thread',thread);else sessionStorage.removeItem('agent-room-thread');
+    if(project)sessionStorage.setItem('wapentake-project',project);else sessionStorage.removeItem('wapentake-project');
+    if(thread)sessionStorage.setItem('wapentake-thread',thread);else sessionStorage.removeItem('wapentake-thread');
     if(state.actor.role==='operator')worker=await call('worker.status');renderJobs();
   }catch(error){notice(error.message,true);if(!state){$('connect').hidden=false;$('workspace').hidden=true;}}
   finally{refreshing=false;}
@@ -137,7 +137,7 @@ $('add-source').addEventListener('click',()=>formDialog('Attach source evidence'
 $('add-decision').addEventListener('click',()=>decisionDialog());
 $('preview').addEventListener('click',()=>perform(async()=>{const packet=await call('context.preview',{participant:'astra'});showData(`Consultant context · ${packet.bytes??packet.byte_length??new TextEncoder().encode(packet.prompt).length} bytes`,packet.prompt);}));
 $('export').addEventListener('click',()=>perform(async()=>{
-  const result=await call('export'),blob=new Blob([result.markdown],{type:'text/markdown'}),url=URL.createObjectURL(blob),link=el('a');link.href=url;link.download='agent-room-conversation.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const result=await call('export'),blob=new Blob([result.markdown],{type:'text/markdown'}),url=URL.createObjectURL(blob),link=el('a');link.href=url;link.download='wapentake-conversation.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }));
 $('usage-button').addEventListener('click',allowanceDialog);
 $('worker-toggle').addEventListener('click',()=>perform(async()=>{if(!worker.running&&!state.policy.execution_enabled){allowanceDialog();return;}worker=await call(worker.running?'worker.stop':'worker.start');notice(worker.running?'Worker started. Queued invitations can now run.':'Worker stopped taking new jobs. Cancel an active job separately if needed.');}));
@@ -146,6 +146,6 @@ $('search-form').addEventListener('submit',event=>{event.preventDefault();perfor
   for(const result of results)content.append(actionButton(result.snippet,async()=>{thread=result.thread_id;renderKey='';$('dialog').close();const message=await call('messages.get',{id:result.id});showData(`Search result · #${message.seq}`,message);},'card search-result'));
   openDialog('Search room history',content);
 });});
-$('connect-form').addEventListener('submit',event=>{event.preventDefault();token=$('capability').value.trim();sessionStorage.setItem('agent-room-token',token);$('capability').value='';state=null;refresh(true);});
+$('connect-form').addEventListener('submit',event=>{event.preventDefault();token=$('capability').value.trim();sessionStorage.setItem('wapentake-token',token);$('capability').value='';state=null;refresh(true);});
 if(token)refresh(true);else $('connect').hidden=false;
 setInterval(()=>{if(!busy&&document.visibilityState==='visible')refresh();},3000);

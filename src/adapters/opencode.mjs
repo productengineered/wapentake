@@ -2,11 +2,12 @@ import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { privateDir,privateWrite } from '../store.mjs';
-import { fail } from '../contracts.mjs';
+import { fail, RoomError } from '../contracts.mjs';
+import { validateModel } from '../models.mjs';
 import { inspectCommand,runProcess,eventsFromJSONL,safeEnvironment,classifyFailure } from './process.mjs';
 
 export function openCodeProfile(model){
-  if(model!=='zai-coding-plan/glm-5.3')fail('model_unavailable','The configured GLM Coding Plan model is required; no fallback is permitted');
+  validateModel('glm', { model });
   return {model,enabled_providers:['zai-coding-plan'],autoupdate:false,share:'disabled',permission:'deny',mcp:{},plugin:[],instructions:[],agent:{'room-consultant':{description:'Packet-only engineering consultant',mode:'primary',permission:{'*':'deny'},prompt:'Use the supplied room packet only. Do not use tools. Return the requested JSON response or a bounded context request.'}}};
 }
 export function openCodeEnvironment(dir,model){
@@ -79,10 +80,19 @@ export class OpenCodeAdapter {
   }
   async run(prepared,{prompt,policy,signal,onSpawn,onCapture}){
     const result=await runProcess(prepared.command,prepared.args,{cwd:prepared.cwd,env:prepared.env,input:prompt,timeoutMs:policy.timeout_seconds*1000,maxBytes:policy.max_output_bytes,signal,onSpawn,onCapture});
-    return this.normalizeCapture(prepared,result,{signal});
+    try { return await this.normalizeCapture(prepared,result,{signal}); }
+    catch (error) {
+      // Inference has already run. An export subprocess reporting spawned:false
+      // describes only metadata capture and must never refund that inference.
+      if (error instanceof RoomError) error.details = { ...error.details, spawned: true, stage: 'capture' };
+      throw error;
+    }
   }
   async normalizeCapture(prepared,result,{signal}={}){
     const normalized=normalizeOpenCode(result.stdout,result);
+    if (typeof normalized.session_id !== 'string' || !normalized.session_id.trim()) {
+      fail('invalid_output', 'OpenCode did not report a session ID; session metadata cannot be verified');
+    }
     const stdoutFile=join(prepared.cwd,`session-export-${randomUUID()}.json`);
     let exported;
     try{exported=await runProcess(prepared.command,['export',normalized.session_id,'--pure'],{cwd:prepared.cwd,env:prepared.env,timeoutMs:15000,maxBytes:2097152,signal,stdoutFile});}

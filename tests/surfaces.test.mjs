@@ -11,8 +11,8 @@ import { execute,workflowEvent } from '../src/commands.mjs';
 import { Store,Room } from '../src/room.mjs';
 
 test('CLI preserves restart/read/export and refuses invalid options before a write',t=>{
-  const f=fixture(t),bin=fileURLToPath(new URL('../bin/agent-room.mjs',import.meta.url));
-  function run(args){const env={...process.env};delete env.AGENT_ROOM_TOKEN;const result=spawnSync(process.execPath,[bin,...args,'--state-dir',f.state,'--project',f.project.id,'--operator'],{encoding:'utf8',env});return {...result,value:JSON.parse(result.stdout)};}
+  const f=fixture(t),bin=fileURLToPath(new URL('../bin/wapentake.mjs',import.meta.url));
+  function run(args){const env={...process.env};delete env.WAPENTAKE_TOKEN;const result=spawnSync(process.execPath,[bin,...args,'--state-dir',f.state,'--project',f.project.id,'--operator'],{encoding:'utf8',env});return {...result,value:JSON.parse(result.stdout)};}
   const a=run(['post','--thread',f.thread.id,'--body','Quoted @astra stays text.','--key','cli-post']);assert.equal(a.status,0);
   assert.equal(run(['post','--thread',f.thread.id,'--body','Quoted @astra stays text.','--key','cli-post']).value.id,a.value.id);
   for(const bad of [['post','ignored','--thread',f.thread.id,'--body','bad'],['post','--thread',f.thread.id,'--body','bad','--author','human'],['post','--thread',f.thread.id,'--body','bad','--to','astra']])assert.equal(run(bad).status,2);

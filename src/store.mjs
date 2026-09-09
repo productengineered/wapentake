@@ -1,13 +1,16 @@
 import { DatabaseSync, backup } from 'node:sqlite';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, chmodSync, realpathSync, renameSync, lstatSync } from 'node:fs';
 import { resolve, join, dirname, isAbsolute, relative, sep } from 'node:path';
-import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { fail, now, uuid, sha256, fingerprint, DEFAULT_POLICY, validatePolicy, RoomError } from './contracts.mjs';
+import { legacySelection, validateSelection } from './models.mjs';
+import { setting, userPath } from './identity.mjs';
+
+export const DATABASE_VERSION = 2;
 
 export function stateRoot(env = process.env) {
-  return resolve(env.AGENT_ROOM_STATE_DIR || join(env.XDG_STATE_HOME || join(homedir(), '.local/state'), 'agent-room'));
+  return resolve(setting('STATE_DIR', env) || userPath('state', env));
 }
 export function privateDir(path) { mkdirSync(path, { recursive: true, mode: 0o700 }); }
 export function privateWrite(path, data, { exclusive = false } = {}) {
@@ -17,7 +20,7 @@ export function privateWrite(path, data, { exclusive = false } = {}) {
   writeFileSync(temporary,data,{mode:0o600,flag:'wx'});renameSync(temporary,path);
 }
 export class Store {
-  constructor(root = stateRoot(), { initialize = false } = {}) {
+  constructor(root = stateRoot(), { initialize = false, allowLegacy = false } = {}) {
     this.root = resolve(root); this.depth = 0;
     const file = join(this.root, 'room.sqlite');
     if (!existsSync(file) && !initialize) fail('storage_error', 'Room store is not initialized. Run init --operator first.');
@@ -26,7 +29,9 @@ export class Store {
       this.db = new DatabaseSync(file, { timeout: 10000 });
       this.db.exec('PRAGMA foreign_keys=ON; PRAGMA busy_timeout=10000;');
       const version = Number(this.db.prepare('PRAGMA user_version').get().user_version);
-      if (version > 1) fail('storage_error', `Unsupported future database schema ${version}; use the matching room release`);
+      if (version > DATABASE_VERSION) fail('storage_error', `Unsupported future database schema ${version}; use the matching room release`);
+      if (version === 1 && !allowLegacy) fail('storage_error', 'This room needs the backup-first schema upgrade. Stop old viewers/workers, pause execution, then run migrate --operator --backup-out <new-directory>.');
+      this.schemaVersion = version;
       if (version === 0) {
         if (!initialize) fail('storage_error', 'Unversioned database; initialization/repair must be explicit');
         const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
@@ -35,8 +40,10 @@ export class Store {
         this.tx(() => {
           this.db.exec(migration);
           this.db.prepare('INSERT INTO meta(key,value) VALUES (?,?)').run('policy', JSON.stringify(DEFAULT_POLICY));
-          this.db.exec('PRAGMA user_version=1');
+          this.db.exec(readFileSync(new URL('../migrations/002-consumer-contracts.sql', import.meta.url), 'utf8'));
+          this.db.exec(`PRAGMA user_version=${DATABASE_VERSION}`);
         });
+        this.schemaVersion = DATABASE_VERSION;
       }
       this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
       chmodSync(file, 0o600);
@@ -102,7 +109,54 @@ export class Store {
     if (typeof token !== 'string' || token.length < 30 || token.length > 200) fail('auth_required', 'A registered actor capability is required');
     const actor = this.get('SELECT id,project_id,name,role,expires_at FROM actor_sessions WHERE capability_hash=?', sha256(token));
     if (!actor || actor.expires_at <= now()) fail('auth_required', 'Unknown or expired actor capability');
-    return actor;
+    const grant = this.schemaVersion >= 2 ? this.get('SELECT execution_scope FROM actor_grants WHERE actor_id=?', actor.id) : null;
+    return { ...actor, execution_scope: grant?.execution_scope ?? null };
+  }
+  saveJobModel(job, owner, selection) {
+    validateSelection(selection);
+    this.run('INSERT INTO job_models(job_id,owner_actor_id,settings,settings_hash) VALUES(?,?,?,?)', job, owner, JSON.stringify(selection), fingerprint(selection));
+  }
+  jobModel(job) {
+    const row = this.get('SELECT * FROM job_models WHERE job_id=?', job);
+    if (!row) fail('storage_error', 'Job has no frozen model selection');
+    let selection;
+    try { selection = JSON.parse(row.settings); } catch { fail('storage_error', 'Malformed frozen model selection'); }
+    if (fingerprint(selection) !== row.settings_hash) fail('storage_error', 'Frozen model selection hash mismatch');
+    return { owner_actor_id: row.owner_actor_id, selection: validateSelection(selection), selection_hash: row.settings_hash };
+  }
+  async migrate(backupOut) {
+    if (this.schemaVersion === DATABASE_VERSION) return { status: 'up_to_date', schema_version: DATABASE_VERSION };
+    if (this.schemaVersion !== 1) fail('storage_error', 'No supported migration exists for this schema');
+    const checkStopped = () => {
+      if (this.policy().execution_enabled || this.get('SELECT 1 FROM worker_claim') || this.get("SELECT 1 FROM jobs WHERE status IN ('preparing','running')")) {
+        fail('conflict', 'Pause execution and reconcile stopped worker claims before migrating');
+      }
+    };
+    checkStopped();
+    const before = this.get('PRAGMA data_version').data_version;
+    const backupResult = await this.backup(backupOut);
+    this.tx(() => {
+      checkStopped();
+      if (this.get('PRAGMA data_version').data_version !== before) fail('conflict', 'The room changed during backup; stop all writers and retry with a new backup destination', { backup: backupResult.path });
+      const jobs = this.all('SELECT * FROM jobs ORDER BY rowid');
+      const byId = new Map(jobs.map(job => [job.id, job]));
+      const ownerOf = (job, visited = new Set()) => {
+        if (visited.has(job.id)) fail('storage_error', 'Cyclic job ancestry prevents migration');
+        visited.add(job.id);
+        const author = this.get('SELECT author_id,author_role FROM messages WHERE id=? AND project_id=?', job.question_id, job.project_id);
+        if (author && ['operator', 'agent'].includes(author.author_role)) return author.author_id;
+        return job.parent_job_id && byId.has(job.parent_job_id) ? ownerOf(byId.get(job.parent_job_id), visited) : null;
+      };
+      this.db.exec(readFileSync(new URL('../migrations/002-consumer-contracts.sql', import.meta.url), 'utf8'));
+      for (const job of jobs) {
+        const participant = this.get('SELECT * FROM participants WHERE id=? AND project_id=?', job.participant_id, job.project_id);
+        if (!participant) fail('storage_error', 'Job participant is missing');
+        this.saveJobModel(job.id, ownerOf(job), legacySelection(participant, job.requested_model));
+      }
+      this.db.exec(`PRAGMA user_version=${DATABASE_VERSION}`);
+    });
+    this.schemaVersion = DATABASE_VERSION;
+    return { status: 'migrated', schema_version: DATABASE_VERSION, backup: backupResult.path, execution_enabled: false };
   }
   blobPath(project, hash) {
     if (!/^[a-f0-9]{64}$/.test(hash) || !this.get('SELECT id FROM projects WHERE id=?', project)) fail('storage_error', 'Invalid blob locator');
@@ -173,7 +227,7 @@ export function restoreBackup(backupPath, destination) {
   }
   privateDir(out);
   for (const file of verified) privateWrite(join(out, file.path), file.data, { exclusive: true });
-  const store = new Store(out);
+  const store = new Store(out, { allowLegacy: true });
   store.tx(() => {
     store.setPolicy({ ...store.policy(), execution_enabled: false });
     store.run('DELETE FROM read_cursors');
@@ -184,6 +238,6 @@ export function restoreBackup(backupPath, destination) {
     }
     store.run('DELETE FROM worker_claim');
   });
-  const operator = store.ensureOperator(); store.close();
-  return { state_dir: out, operator_token_file: operator.tokenPath, execution_enabled: false };
+  const operator = store.ensureOperator(), schemaVersion = store.schemaVersion; store.close();
+  return { state_dir: out, operator_token_file: operator.tokenPath, execution_enabled: false, schema_version: schemaVersion, migration_required: schemaVersion < DATABASE_VERSION };
 }

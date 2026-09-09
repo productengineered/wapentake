@@ -8,8 +8,13 @@ import { adapters as defaultAdapters } from './adapters/index.mjs';
 import { processIdentity,processAlive,redact } from './adapters/process.mjs';
 
 export class Worker {
-  constructor(room,{adapters=defaultAdapters()}={}){room.operator();this.room=room;this.store=room.store;this.adapters=adapters;this.active=false;}
+  constructor(room,{adapters=defaultAdapters()}={}){
+    room.refreshActor();
+    if (room.actor.role !== 'operator' && room.actor.execution_scope !== 'own_jobs') fail('forbidden', 'Worker execution requires an operator or an explicitly issued runner capability');
+    this.room=room;this.store=room.store;this.adapters=adapters;this.active=false;
+  }
   inspectRecovery(project,id){
+    this.room.operator();
     const job=this.room.job(project,id),claim=this.store.get('SELECT * FROM worker_claim WHERE job_id=?',id)??null;
     return {job,claim,owner_alive:claim?processAlive(claim.owner_pid,claim.owner_identity):false,child_alive:claim?.child_pid?processAlive(claim.child_pid,claim.child_identity):false,automatic_retry:false};
   }
@@ -20,9 +25,19 @@ export class Worker {
       const state=this.inspectRecovery(project,id);
       if(state.owner_alive||state.child_alive)fail('conflict','A matching local worker or child is still live; refusing to steal its claim');
       if(!['preparing','running','interrupted_unknown'].includes(state.job.status))return state;
-      this.store.run("UPDATE jobs SET status='interrupted_unknown',error_code='interrupted_unknown',error_message=?,completed_at=? WHERE id=?",'Original local process is stopped; remote result/usage remains uncertain',now(),id);
+      const ledger = this.store.get('SELECT state FROM budget_ledger WHERE job_id=?', id);
+      if (!ledger) fail('storage_error', 'Interrupted job has no budget ledger record');
+      // A current reservation proves no launch only in the original store. A
+      // backup may predate a launch, and its uncertainty survives later recovery.
+      const restored = Boolean(this.store.get("SELECT 1 FROM job_events WHERE job_id=? AND event='restored_uncertain' LIMIT 1", id));
+      const released = ledger.state === 'reserved' && !restored;
+      if (released) this.store.run("UPDATE budget_ledger SET state='released' WHERE job_id=? AND state='reserved'", id);
+      const message = released || ledger.state === 'released'
+        ? 'Original local process is stopped; confirmed pre-launch reservation is released'
+        : 'Original local process is stopped; remote result/usage remains uncertain';
+      this.store.run("UPDATE jobs SET status='interrupted_unknown',error_code='interrupted_unknown',error_message=?,completed_at=? WHERE id=?",message,now(),id);
       this.store.run('DELETE FROM worker_claim WHERE job_id=?',id);
-      this.store.event(id,'operator_reconciled',{actor_id:this.room.actor.id,automatic_retry:false});
+      this.store.event(id,'operator_reconciled',{actor_id:this.room.actor.id,automatic_retry:false,reservation_released:released,launch_recorded:ledger.state==='started',restored_uncertain:restored});
       return this.inspectRecovery(project,id);
     });
   }
@@ -36,17 +51,33 @@ export class Worker {
     }
     return changes;
   }
-  claim(){
+  claim({project,jobId}={}){
+    if (jobId) {
+      const named = this.room.authorizeJob(project, jobId);
+      if (named.status !== 'queued') fail('conflict', 'The named job is not queued; no job was executed', { job_id: jobId, status: named.status });
+    } else this.room.operator();
     const policy=this.room.policy();
     if(!policy.execution_enabled)return {status:'disabled',reason:'Model execution is disabled; queued discussions remain readable'};
     const identity=processIdentity();
     if(!identity)fail('client_unsupported','Cannot establish the local worker process identity');
     return this.store.tx(()=>{
+      const selected = jobId ? this.room.authorizeJob(project, jobId) : null;
+      if (selected && selected.status !== 'queued') fail('conflict', 'The named job is not queued; no job was executed', { job_id: jobId, status: selected.status });
       const old=this.store.get('SELECT * FROM worker_claim WHERE singleton=1');
-      if(old)return {status:'busy',job_id:old.job_id,recovery_required:!processAlive(old.owner_pid,old.owner_identity)};
-      const job=this.store.get("SELECT * FROM jobs WHERE status='queued' ORDER BY rowid LIMIT 1");
+      if(old) {
+        if (jobId) {
+          const blocker = this.store.get('SELECT project_id FROM jobs WHERE id=?', old.job_id);
+          fail('conflict', 'The single worker is occupied; the requested job was not executed', {
+            job_id: jobId,
+            blocking_job_id: this.room.actor.role === 'operator' || blocker?.project_id === this.room.actor.project_id ? old.job_id : null,
+            recovery_required: !processAlive(old.owner_pid, old.owner_identity),
+          });
+        }
+        return {status:'busy',job_id:old.job_id,recovery_required:!processAlive(old.owner_pid,old.owner_identity)};
+      }
+      const job=selected??this.store.get("SELECT * FROM jobs WHERE status='queued' ORDER BY rowid LIMIT 1");
       if(!job)return {status:'idle'};
-      const participant=this.store.get('SELECT * FROM participants WHERE project_id=? AND id=?',job.project_id,job.participant_id);
+      const participant=this.room.jobParticipant(job.project_id,job);
       if(!participant?.enabled||!policy.allowed_adapters.includes(participant.adapter)){
         this.store.run("UPDATE jobs SET status='disabled',error_code='disabled',error_message='Participant disabled by current policy',completed_at=? WHERE id=?",now(),job.id);
         this.store.run("UPDATE budget_ledger SET state='released' WHERE job_id=? AND state='reserved'",job.id);
@@ -69,8 +100,17 @@ export class Worker {
     });
   }
   async runOnce(){
+    this.room.operator();
     if(this.active)return {status:'busy'};
-    const claimed=this.claim();if(claimed.status!=='claimed')return claimed;
+    return this.runClaimed();
+  }
+  async runJob(project,id){
+    this.room.authorizeJob(project,id);
+    if(this.active)fail('conflict','This worker already has an active consultation',{job_id:id});
+    return {job_id:id,...await this.runClaimed({project,jobId:id})};
+  }
+  async runClaimed(target={}){
+    const claimed=this.claim(target);if(claimed.status!=='claimed')return claimed;
     this.active=true;
     const {job,participant}=claimed,dir=this.store.jobDir(job.project_id,job.id),controller=new AbortController();
     let timer,started=false,packet;
@@ -90,8 +130,9 @@ export class Worker {
       }
       privateWrite(join(dir,'packet.json'),JSON.stringify(packet,null,2));
       privateWrite(join(dir,'packet.md'),packet.prompt);
-      privateWrite(join(dir,'invocation.json'),JSON.stringify({adapter:participant.adapter,requested_model:participant.model,capabilities:prepared.capabilities,packet_hash:packet.hash,configuration_hash:packet.config_hash,environment_policy:'allowlisted saved-client-auth environment; API keys/provider overrides excluded',source_scope:'selected packet only'},null,2));
+      privateWrite(join(dir,'invocation.json'),JSON.stringify({adapter:participant.adapter,requested_model:participant.model,reasoning_effort:participant.reasoning_effort,model_selection:participant.model_selection,model_selection_hash:participant.model_selection_hash,capabilities:prepared.capabilities,packet_hash:packet.hash,configuration_hash:packet.config_hash,environment_policy:'allowlisted saved-client-auth environment; API keys/provider overrides excluded',source_scope:'selected packet only'},null,2));
       this.store.tx(()=>{
+        this.room.authorizeJob(job.project_id,job.id);
         if(!this.room.policy().execution_enabled)fail('disabled','Execution was paused before launch');
         if(this.room.job(job.project_id,job.id).cancel_requested)fail('cancelled','Invitation was cancelled before launch');
         this.store.run("UPDATE jobs SET status='running',packet_hash=?,config_hash=?,context_version=?,started_at=? WHERE id=?",packet.hash,packet.config_hash,packet.context_version,now(),job.id);
@@ -102,6 +143,7 @@ export class Worker {
       timer=setInterval(()=>{
         try{
           this.store.run('UPDATE worker_claim SET heartbeat=? WHERE job_id=?',now(),job.id);
+          this.room.authorizeJob(job.project_id,job.id);
           if(this.room.job(job.project_id,job.id).cancel_requested)controller.abort();
         }catch{controller.abort();}
       },250);timer.unref();
@@ -110,6 +152,7 @@ export class Worker {
         onCapture:result=>{privateWrite(join(dir,'native-events.jsonl'),result.stdout);privateWrite(join(dir,'client-diagnostic.txt'),result.stderr??'');privateWrite(join(dir,'client-result.json'),JSON.stringify({exit_code:result.code,signal:result.signal,spawned:result.spawned},null,2));},
       });
       if(controller.signal.aborted||this.room.job(job.project_id,job.id).cancel_requested)fail('cancelled','Consultation was cancelled; output was not promoted');
+      this.room.authorizeJob(job.project_id,job.id);
       const finished=this.persistResponse(job,participant,packet,normalized,dir);
       this.queueFollowUps(job.project_id,job.question_id);
       return finished;
@@ -132,7 +175,7 @@ export class Worker {
     const job=this.room.job(project,id);
     if(job.status==='succeeded')return {status:'succeeded',job,already_recorded:true};
     if(job.status!=='failed'||job.cancel_requested||this.store.get('SELECT job_id FROM worker_claim WHERE job_id=?',id))fail('conflict','Only a stopped, failed, uncancelled capture can be reconciled');
-    const participant=this.room.participants(project).find(p=>p.id===job.participant_id);
+    const participant=this.room.jobParticipant(project,job);
     if(participant?.adapter!=='opencode-glm-plan'||job.error_code!=='client_unsupported'||!['OpenCode session export was not JSON','Could not inspect the completed OpenCode session metadata'].includes(job.error_message))fail('conflict','This failure has no supported metadata-only reconciliation');
     const dir=this.store.jobDir(project,id),read=name=>JSON.parse(readFileSync(join(dir,name),'utf8'));
     const receipt=read('client-result.json'),packet=read('packet.json'),invocation=read('invocation.json');
@@ -158,11 +201,18 @@ export class Worker {
     });
   }
   persistResponse(job,participant,packet,normalized,dir){
+      if (normalized.observed_model !== null && normalized.observed_model !== undefined && (typeof normalized.observed_model !== 'string' || !normalized.observed_model.trim())) fail('invalid_output', 'Client reported an invalid model identity');
       if(normalized.observed_model&&normalized.observed_model!==participant.model&&normalized.observed_model!==participant.model.split('/').at(-1))fail('model_unavailable','Client reported a different model than requested');
       const response=validateResponse(normalized.value,{citations:packet.packet.allowed_citations,participants:packet.packet.discussion_participants.map(p=>p.id)});
-      for(const request of response.context_requests)if(request.kind==='read')this.room.source(job.project_id,request.source_id);
+      for (const request of response.context_requests) if (request.kind === 'read') {
+        try { this.room.source(job.project_id, request.source_id); }
+        catch (error) {
+          if (error instanceof RoomError && error.code === 'not_found') fail('invalid_output', 'Consultant requested a source that does not exist in this project');
+          throw error;
+        }
+      }
       const changed=this.room.thread(job.project_id,job.thread_id).context_version!==packet.context_version||sourceFreshness(this.store,packet.source_snapshot).length>0;
-      const output={response,requested_model:participant.model,observed_model:normalized.observed_model??null,model_identity_verified:normalized.observed_model!==null&&normalized.observed_model!==undefined,model_identity_source:normalized.model_identity_source??null,diagnostics:normalized.diagnostics??[],usage:normalized.usage??null,usage_unknown_reason:normalized.usage_unknown_reason??null,terminal_state:normalized.terminal_state,session_id:normalized.session_id??null,stale_context:changed,completed_at:now()};
+      const output={response,requested_model:participant.model,reasoning_effort:participant.reasoning_effort,model_selection_hash:participant.model_selection_hash,observed_model:normalized.observed_model??null,model_identity_verified:normalized.observed_model!==null&&normalized.observed_model!==undefined,model_identity_source:normalized.model_identity_source??null,diagnostics:normalized.diagnostics??[],usage:normalized.usage??null,usage_unknown_reason:normalized.usage_unknown_reason??null,terminal_state:normalized.terminal_state,session_id:normalized.session_id??null,stale_context:changed,completed_at:now()};
       privateWrite(join(dir,'output.json'),JSON.stringify(output,null,2));
       return this.store.tx(()=>{
         const author={id:participant.id,name:participant.alias,role:'consultant'};
@@ -195,10 +245,12 @@ export class Worker {
           if(this.store.get('SELECT id FROM jobs WHERE project_id=? AND causal_key=?',project,key))return null;
           const participant=this.room.participants(project).find(p=>p.id===target);
           if(!participant||!first.some(j=>j.participant_id===target))fail('invalid_output','Follow-up recipient was not in the first-round discussion');
+          const model = this.store.jobModel(first.find(j => j.participant_id === target).id);
           const body=output.follow_up?.question??'Respond to the original question using the requested retrieved context. Preserve the current operator constraints.';
           const question=this.room._post(project,parent.thread_id,{body,kind:'question',reply_to:parent.reply_id,source_ids:output.follow_up?.citations??[]},{id:parent.participant_id,name:'Bounded follow-up',role:'consultant'});
           const id=uuid(),thread=this.room.thread(project,parent.thread_id);
-          this.store.run('INSERT INTO jobs(id,project_id,thread_id,participant_id,causal_key,question_id,boundary_seq,context_version,round,status,requested_model,parent_job_id,retrieval,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,project,parent.thread_id,target,key,question.id,question.seq,thread.context_version,1,'queued',participant.model,parent.id,JSON.stringify(output.context_requests??[]),now());
+          this.store.run('INSERT INTO jobs(id,project_id,thread_id,participant_id,causal_key,question_id,boundary_seq,context_version,round,status,requested_model,parent_job_id,retrieval,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,project,parent.thread_id,target,key,question.id,question.seq,thread.context_version,1,'queued',model.selection.model,parent.id,JSON.stringify(output.context_requests??[]),now());
+          this.store.saveJobModel(id, model.owner_actor_id, model.selection);
           this.room._reserve(id,project,parent.thread_id);this.store.event(id,'bounded_follow_up',{parent_job_id:parent.id});return id;
         });
         if(next)created.push(next);

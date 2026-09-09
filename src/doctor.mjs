@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { adapters } from './adapters/index.mjs';
 import { openCodeEnvironment } from './adapters/opencode.mjs';
+import { resolveModels } from './models.mjs';
 
 export function runtimeReport(){
   const [major,minor,patch]=process.versions.node.split('.').map(Number);
@@ -15,14 +16,16 @@ export function runtimeReport(){
   }catch(e){error=e.message;}
   return {node:process.versions.node,node_executable:process.execPath,platform:process.platform,architecture:process.arch,supported_runtime:supported,sqlite,fts5,error,required_node:'24.20.x or 26.x; see release verification for tested patches'};
 }
-export async function doctor({runtimeOnly=false}={}){
+export async function doctor({runtimeOnly=false,modelsFile,modelProfile}={}){
   const runtime=runtimeReport(),providers=[];
   if(!runtimeOnly){
-    const dir=mkdtempSync(join(tmpdir(),'agent-room-doctor-'));
+    const dir=mkdtempSync(join(tmpdir(),'wapentake-doctor-'));
     try{
+      const models=resolveModels({file:modelsFile,profile:modelProfile}).models;
       for(const [id,adapter] of adapters()){
         try{
-          const options=id==='opencode-glm-plan'?{cwd:dir,env:openCodeEnvironment(dir,'zai-coding-plan/glm-5.3'),checkProfile:true}:{cwd:dir};
+          const selected=id==='opencode-glm-plan'?models.glm:models.astra;
+          const options=id==='opencode-glm-plan'?{cwd:dir,model:selected.model,env:openCodeEnvironment(dir,selected.model),checkProfile:true}:{cwd:dir,model:selected.model,reasoningEffort:selected.reasoning_effort};
           providers.push({id,status:'local_checks_passed',...await adapter.inspect(options)});
         }catch(error){providers.push({id,status:'unavailable',error_code:error.code??'client_unsupported',message:error.message});}
       }

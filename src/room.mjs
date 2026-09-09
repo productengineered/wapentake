@@ -1,15 +1,23 @@
 import { realpathSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { Store, privateWrite } from './store.mjs';
 import { fail, uuid, now, text, integer, keys, strings, enumeration, PARTICIPANTS, fingerprint } from './contracts.mjs';
 import { captureSource, excerpt } from './sources.mjs';
+import { readModelConfig, resolveModels } from './models.mjs';
+import { jobProvenance } from './provenance.mjs';
 
 export { Store } from './store.mjs';
 export { RoomError } from './contracts.mjs';
 export class Room {
-  constructor(store, token) { this.store = store; this.actor = store.authenticate(token); }
-  operator() { if (this.actor.role !== 'operator') fail('forbidden', 'This action requires an explicit operator session'); }
+  #token;
+  constructor(store, token, { modelsFile, modelProfile } = {}) {
+    this.store = store; this.#token = token; this.actor = store.authenticate(token);
+    this.modelsFile = modelsFile; this.modelProfile = modelProfile;
+  }
+  refreshActor() { this.actor = this.store.authenticate(this.#token); return this.actor; }
+  operator() { this.refreshActor(); if (this.actor.role !== 'operator') fail('forbidden', 'This action requires an explicit operator session'); }
   project(id) {
+    text(id, 'project id or path', 2000);
     const project = this.store.get('SELECT * FROM projects WHERE id=? OR path=?', id, id);
     if (!project) fail('not_found', 'Project not found');
     if (this.actor.project_id && this.actor.project_id !== project.id) fail('forbidden', 'Actor is registered to a different project');
@@ -17,6 +25,7 @@ export class Room {
   }
   thread(project, id) {
     this.project(project);
+    text(id, 'thread id', 300);
     const thread = this.store.get('SELECT * FROM threads WHERE project_id=? AND id=?', project, id);
     if (!thread) fail('not_found', 'Thread not found in this project');
     return { ...thread, task_ids: JSON.parse(thread.task_ids) };
@@ -46,13 +55,50 @@ export class Room {
     this.store.run('UPDATE projects SET path=?,config_version=config_version+1 WHERE id=?', real, project); return this.project(project);
   }
   attachActor(project, options) {
-    this.operator(); this.project(project); keys(options, ['name','run_id','lifetime_days'], 'actor');
+    this.operator(); this.project(project); keys(options, ['name','run_id','lifetime_days','role'], 'actor');
     const name = text(options.name, 'actor name', 100), run = text(options.run_id, 'run_id', 100);
     const days = integer(options.lifetime_days ?? 7, 'lifetime_days', 1, 30);
-    const issued = this.store.issueActor({ project_id: project, name: `${name}:${run}`, role: 'agent', lifetimeDays: days });
+    const role = enumeration(options.role ?? 'agent', ['agent', 'runner'], 'actor capability role');
+    const issued = this.store.tx(() => {
+      const result = this.store.issueActor({ project_id: project, name: `${name}:${run}`, role: 'agent', lifetimeDays: days });
+      if (role === 'runner') this.store.run("INSERT INTO actor_grants(actor_id,execution_scope) VALUES(?,'own_jobs')", result.actor.id);
+      return result;
+    });
     const tokenFile = join(this.store.root, 'capabilities', `${issued.actor.id}.token`);
     privateWrite(tokenFile, `${issued.token}\n`, { exclusive: true });
-    return { ...issued.actor, token_file: tokenFile };
+    return { ...issued.actor, capability_role: role, execution_scope: role === 'runner' ? 'own_jobs' : null, token_file: tokenFile };
+  }
+  revokeActor(project, id) {
+    this.operator(); this.project(project); text(id, 'actor id', 300);
+    return this.store.tx(() => {
+      const actor = this.store.get("SELECT id FROM actor_sessions WHERE id=? AND project_id=? AND role='agent'", id, project);
+      if (!actor) fail('not_found', 'Agent capability not found in this project');
+      this.store.run('UPDATE actor_sessions SET expires_at=? WHERE id=?', now(), id);
+      this.store.run('DELETE FROM actor_grants WHERE actor_id=?', id);
+      return { actor_id: id, status: 'revoked' };
+    });
+  }
+  authorizeJob(project, id) {
+    this.refreshActor();
+    const job = this.job(project, id);
+    if (this.actor.role !== 'operator' && (this.actor.execution_scope !== 'own_jobs' || this.store.jobModel(id).owner_actor_id !== this.actor.id)) {
+      fail('forbidden', 'A runner may execute only jobs created by its own invitations');
+    }
+    return job;
+  }
+  modelSelections(roles, profile) {
+    const document = readModelConfig({ file: this.modelsFile });
+    if (document.path && this.store.all('SELECT path FROM projects').some(p => document.path === p.path || document.path.startsWith(p.path + sep))) {
+      fail('invalid_input', 'Keep model configuration outside registered project repositories, in the user configuration directory');
+    }
+    return resolveModels({ roles, profile: profile ?? this.modelProfile, document });
+  }
+  jobParticipant(project, job) {
+    const participant = this.participants(project).find(p => p.id === job.participant_id);
+    if (!participant) fail('storage_error', 'Job participant is missing');
+    const stored = this.store.jobModel(job.id);
+    if (stored.selection.role !== participant.alias || stored.selection.adapter !== participant.adapter || stored.selection.model !== job.requested_model) fail('storage_error', 'Job model selection does not match its participant or requested model');
+    return { ...participant, model: stored.selection.model, reasoning_effort: stored.selection.reasoning_effort, model_selection: stored.selection, model_selection_hash: stored.selection_hash };
   }
   participants(project) { this.project(project); return this.store.all('SELECT * FROM participants WHERE project_id=? ORDER BY alias', project); }
   openThread(project, options) {
@@ -108,6 +154,7 @@ export class Room {
   }
   message(project, id) {
     this.project(project);
+    text(id, 'message id', 300);
     const message = this.store.get('SELECT m.*,j.stale_context,j.requested_model FROM messages m LEFT JOIN jobs j ON j.id=m.job_id WHERE m.project_id=? AND m.id=?', project, id);
     if (!message) fail('not_found', 'Message not found in this project');
     return { ...message, source_ids: this.store.all('SELECT ref_id FROM message_refs WHERE project_id=? AND message_id=? ORDER BY ref_id', project, id).map(r => r.ref_id) };
@@ -145,7 +192,8 @@ export class Room {
     });
   }
   source(project, id) {
-    this.project(project); const source = this.store.get('SELECT * FROM sources WHERE project_id=? AND id=?', project, id);
+    this.project(project); text(id, 'source id', 300);
+    const source = this.store.get('SELECT * FROM sources WHERE project_id=? AND id=?', project, id);
     if (!source) fail('not_found', 'Source not found in this project'); return source;
   }
   sources(project, threadId, {history=false}={}) {
@@ -220,25 +268,28 @@ export class Room {
     this.store.run('INSERT INTO budget_ledger VALUES(?,?,?,?,?)', job, day, 'reserved', fingerprint(policy), now());
   }
   ask(project, threadId, options) {
+    this.refreshActor();
     const thread = this.thread(project, threadId);
-    keys(options, ['body','to','reply_to','source_ids','key'], 'invitation'); text(options.body, 'question', 16000);
+    keys(options, ['body','to','reply_to','source_ids','key','model_profile'], 'invitation'); text(options.body, 'question', 16000);
     const recipients = strings(options.to, 'recipients', 2); if (!recipients.length) fail('invalid_input', 'Name at least one participant');
     const participants = recipients.map(alias => this.participants(project).find(p => p.alias === alias || p.id === alias));
     if (participants.some(p => !p || !p.enabled || !this.policy().allowed_adapters.includes(p.adapter))) fail('invalid_input', 'Unknown or disabled participant');
     return this.store.idempotent(project, this.actor.id, `ask:${threadId}`, options.key, options, () => {
+      const selections = this.modelSelections(participants.map(p => p.alias), options.model_profile).models;
       const question = this._post(project, threadId, { ...options, kind: 'question' });
       if (this.actor.role === 'operator') this.store.run('UPDATE threads SET question_id=? WHERE id=?', question.id, threadId);
       const current = this.thread(project, threadId), jobs = [];
       for (const participant of participants) {
-        const id = uuid();
-        this.store.run('INSERT INTO jobs(id,project_id,thread_id,participant_id,causal_key,question_id,boundary_seq,context_version,status,requested_model,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)', id, project, threadId, participant.id, `${threadId}:${this.actor.id}:${options.key}:${participant.id}`, question.id, question.seq, current.context_version, 'queued', participant.model, now());
+        const id = uuid(), selection = selections[participant.alias];
+        this.store.run('INSERT INTO jobs(id,project_id,thread_id,participant_id,causal_key,question_id,boundary_seq,context_version,status,requested_model,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)', id, project, threadId, participant.id, `${threadId}:${this.actor.id}:${options.key}:${participant.id}`, question.id, question.seq, current.context_version, 'queued', selection.model, now());
+        this.store.saveJobModel(id, this.actor.id, selection);
         this._reserve(id, project, threadId); this.store.event(id, 'queued', { actor_id: this.actor.id }); jobs.push(id);
       }
       return { status: 'queued', question, job_ids: jobs, execution_enabled: this.policy().execution_enabled, mode: thread.mode };
     });
   }
   jobs(project, limit = 100) { this.project(project); integer(limit,'limit',1,500); return this.store.all('SELECT * FROM jobs WHERE project_id=? ORDER BY created_at DESC,id LIMIT ?', project, limit).map(j => ({ ...j, usage: j.usage ? JSON.parse(j.usage) : null, retrieval: JSON.parse(j.retrieval) })); }
-  job(project, id) { this.project(project); const j = this.store.get('SELECT * FROM jobs WHERE project_id=? AND id=?', project, id); if (!j) fail('not_found','Job not found in this project'); return { ...j, usage: j.usage ? JSON.parse(j.usage) : null, retrieval: JSON.parse(j.retrieval) }; }
+  job(project, id) { this.project(project); text(id, 'job id', 300); const j = this.store.get('SELECT * FROM jobs WHERE project_id=? AND id=?', project, id); if (!j) fail('not_found','Job not found in this project'); return { ...j, usage: j.usage ? JSON.parse(j.usage) : null, retrieval: JSON.parse(j.retrieval) }; }
   cancel(project, id) {
     this.job(project, id);
     return this.store.tx(() => {
@@ -258,6 +309,8 @@ export class Room {
       const next = uuid(), thread = this.thread(project,old.thread_id);
       const boundary = thread.mode==='independent'&&old.round===0?old.boundary_seq:this.store.get('SELECT max(seq) n FROM messages WHERE project_id=? AND thread_id=?',project,old.thread_id).n;
       this.store.run('INSERT INTO jobs(id,project_id,thread_id,participant_id,causal_key,question_id,boundary_seq,context_version,round,status,requested_model,parent_job_id,retrieval,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)', next,project,old.thread_id,old.participant_id,`retry:${id}:${key}`,old.question_id,boundary,thread.context_version,old.round,'queued',old.requested_model,id,JSON.stringify(old.retrieval),now());
+      const model = this.store.jobModel(id);
+      this.store.saveJobModel(next, model.owner_actor_id, model.selection);
       this._reserve(next,project,old.thread_id); this.store.event(next,'explicit_retry',{ previous_job:id,actor_id:this.actor.id }); return this.job(project,next);
     });
   }
@@ -270,7 +323,13 @@ export class Room {
   exportThread(project,threadId) {
     const thread=this.thread(project,threadId), sources=this.sources(project,threadId,{history:true}), decisions=this.decisions(project,threadId,{history:true}), constraints=this.constraints(project,threadId);
     const messages=this.store.all('SELECT id FROM messages WHERE project_id=? AND thread_id=? ORDER BY seq',project,threadId).map(m=>this.message(project,m.id));
-    const records={schema_version:1,project:this.project(project),thread,messages,sources,decisions,constraints,jobs:this.jobs(project,500).filter(j=>j.thread_id===threadId)};
+    const jobs = this.store.all('SELECT id FROM jobs WHERE project_id=? AND thread_id=? ORDER BY rowid', project, threadId).map(row => {
+      const job = this.job(project, row.id);
+      return { ...job, provenance: jobProvenance(this, project, job) };
+    });
+    const provenance = new Map(jobs.map(job => [job.id, job.provenance]));
+    const exportedMessages = messages.map(message => message.job_id ? { ...message, provenance: provenance.get(message.job_id) ?? null } : message);
+    const records={schema_version:2,project:this.project(project),thread,messages:exportedMessages,sources,decisions,constraints,jobs};
     const markdown=[`# ${thread.title}`,`Project: ${records.project.label}`,`Status: ${thread.status}`, ...messages.map(m=>`## ${m.author_name} (${m.author_role}) -- ${m.created_at}\n\n${m.body}\n\nMessage: ${m.id}${m.stale_context?' | Context changed since consultation':''}`), '## Decisions',...decisions.map(d=>`- [${d.status}] ${d.statement}\n  Rationale: ${d.rationale}\n  Version: ${d.version}`)].join('\n\n')+'\n';
     return { records,markdown };
   }

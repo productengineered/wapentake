@@ -1,15 +1,15 @@
 # Verification record
 
-Development preview, 2026-09-08. The operator-approved macOS pilot used exactly six launched calls: five validated responses and one retained importer failure. Execution is paused.
+Wapentake 0.3.0 development preview, 2026-09-08. The operator-approved macOS pilot used exactly six launched calls: five validated responses and one retained importer failure. Execution is paused.
 
 | Surface | Result | Evidence / limit |
 |---|---|---|
-| Node 26.0.0, macOS arm64 | 41 tests passed | `npm test`, including package/install fixture and conservative recovery/native-terminal cases |
-| Node 24.20.0, macOS arm64 | 41 tests passed | Official archive SHA-256 verified; same final test set |
+| Node 26.0.0, macOS arm64 | 79 tests passed | `npm test`; includes the review regressions, killed-worker recovery and fake-client inspection gates |
+| Node 24.20.0, macOS arm64 | 79 tests passed | Same `npm test` suite with the verified Node 24 distribution first on PATH, including child processes and package/install fixtures |
 | SQLite | 3.53.4, FTS5 available | Runtime doctor on both runtimes |
 | Codex 0.153.4 | Live calls completed | Live requested `gpt-6-astra` through ChatGPT login; two validated replies after one startup-notice rejection; resolved identity unreported |
 | OpenCode 1.18.18 | Three live replies validated | Saved Coding Plan route; exported session metadata confirms `zai-coding-plan/glm-5.3`; zero tool activity |
-| Browser | Passed | Disposable Chrome, Playwright 1.58.1, synthetic data, three fake calls, zero real calls |
+| Browser | Passed for 0.3.0 | Disposable Chrome, Playwright 1.58.1, synthetic data, three fake calls, zero real calls |
 | Package portability | Passed | Pack, offline install, fresh-process post/read/decision/queue/export, second-project isolation, thin launcher |
 | Shared Mac installation | Implemented | Two unchanged toolkit adapters follow a shared update; retained history, archive hash validation, unrelated-command refusal and rejected-update preservation |
 | Platforms | Mac scope confirmed | Linux and Windows are outside this release scope |
@@ -34,11 +34,11 @@ The browser walkthrough covered literal HTML rendering, posting, invitations, ca
 | A09 | `context.test.mjs`: deterministic selection and packet hash |
 | A10 | `worker.test.mjs`: queued source recapture and human change during a running consultation |
 | A11 | `adapters.test.mjs`: final-channel contract and malformed/unknown terminal output refusal |
-| A12 | `worker.test.mjs`, `adapters.test.mjs`: auth failure and pinned-model/no-API-fallback behavior; live route evidence in the pilot record |
+| A12 | `worker.test.mjs`, `adapters.test.mjs`, `safety-gates.test.mjs`: auth failures, pinned client versions, required flags, effective profile and no-API-fallback policy; live route evidence in the pilot record |
 | A13 | `worker.test.mjs`: two store connections cannot own one active worker claim |
 | A14 | `surfaces.test.mjs`, `worker.test.mjs`: causal trigger idempotency and one follow-up round |
-| A15 | `worker.test.mjs`: live owner not stolen; stopped recovery retains uncertain consumption without retry |
-| A16 | `room.test.mjs`: atomic reservation/refusal with readable history |
+| A15 | `worker.test.mjs`, `recovery.test.mjs`: kill workers during preparation and execution; refuse live recovery; release proven pre-launch reservations, repair old leaks and retain uncertainty from an earlier backup |
+| A16 | `room.test.mjs`, `safety-gates.test.mjs`: atomic reservation/refusal with readable history; eight simultaneous CLI asks cannot overbook three slots |
 | A17 | Room/surface tests and browser: mentions, inbox, polling and export cause no calls |
 | A18 | `room.test.mjs`: escaping paths/symlinks and sensitive source paths refused |
 | A19 | `adapters.test.mjs`: timeout, output cap, bounded diagnostics and split UTF-8 |
@@ -56,3 +56,26 @@ The live trace records requested/observed identity, auth route, packet/configura
 The original discussion needed 37,839 bytes of required material and refused before launch at the 32,768-byte limit. A focused thread carried the approved decision and original approval message in 6,780 bytes. This is evidence for explicit scoping and persistence, not automatic summarization of arbitrary history. The 10,000-message retention case remains an offline fixture.
 
 Open limits: nested decision references and source bytes are not automatically expanded just because a decision cites them; attach/read required evidence explicitly. The stale-citation acceptance guard checks direct consultation message references, not transitive chains. The local OS user remains trusted; application capabilities do not isolate hostile processes under that same account. Actual toolkit/consumer workflow adoption remains unverified; Linux is outside scope.
+
+## Review regression checks
+
+The September 8 follow-up adds 16 offline tests. `input-errors.test.mjs` exercises CLI and HTTP identifier validation, missing input and capability files, non-object events, system-error normalization and occupied ports. `sources.test.mjs` covers exact-limit and oversized Git/working-tree capture, resolved revisions and bounded Git diagnostics. `consultant-errors.test.mjs` verifies that invented source requests produce exit 6, invalid OpenCode session IDs refuse before export, and failure to spawn metadata export never refunds an already launched inference.
+
+The recovery tests use killed child workers with fake adapters. One test backs up during preparation, lets the original worker launch, then restores the older snapshot: recovery must retain that snapshot's uncertain reservation. Client inspection tests invoke temporary fake executables only. No additional plan-backed model calls were made for this hardening pass.
+
+## Consumer contract checks
+
+Nineteen additional offline tests cover the 0.2.0 changes. `models.test.mjs` verifies default/profile precedence, malformed and unsafe selections, the standalone resolver, immutable job settings, replay/retry/follow-up behavior and preserved adapter isolation. `named-jobs.test.mjs` verifies exact job execution, singleton conflicts, runner ownership and denials, expiry, revocation before/after launch, HTTP authority and CLI result/exit contracts. `migration-provenance.test.mjs` verifies the v1 backup-first upgrade, transactional rollback, concurrent-writer refusal, old backup restore, separately saved legacy GLM identity evidence, per-message provenance, missing/corrupt captures and export of older jobs beyond the project listing window.
+
+All 76 tests passed on Node 26.0.0 and Node 24.20.0, including offline package/install fixtures. The browser smoke used three fake consultant calls and zero real calls; desktop and mobile screenshots were inspected. The new profile choices, including Astra high effort and the external adjudicator example, have not received additional live inference validation. The earlier six-call pilot remains the only live model evidence.
+
+The existing paused local pilot was backed up and migrated from schema 1 to 2. Hashes of all 16 original application tables remained identical: 18 messages, six jobs and six charged launches were preserved. Both historical threads export under schema 2; the three GLM identities are recoverable from the saved session metadata, while Codex identity remains unknown. Execution stays disabled. Migration made no model calls.
+
+
+## Wapentake rename verification
+
+All 79 tests passed on Node 26.0.0 and Node 24.20.0 on macOS. The browser smoke passed with three fake calls and zero real calls; desktop and mobile screenshots were inspected with no horizontal overflow.
+
+Version 0.3.0 uses one package, command, environment prefix and set of default paths: Wapentake. The rename regressions cover CLI access to existing conversation data, model/state environment selection and broken configuration refusal. Installation fixtures verify two disposable Wapentake consumers sharing retained releases and history. The browser smoke verifies the Wapentake title and export filename alongside the conversation workflow.
+
+For browser verification, provide `WAPENTAKE_PLAYWRIGHT_MODULE` pointing to an installed Playwright `index.mjs`, optionally `WAPENTAKE_CHROME_EXECUTABLE` for an existing Chrome binary and `WAPENTAKE_SCREENSHOT_DIR` for retained synthetic screenshots. Run `node --import ./tests/isolate-config.mjs tests/browser-smoke.mjs`.

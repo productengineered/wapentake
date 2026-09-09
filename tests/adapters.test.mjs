@@ -62,8 +62,8 @@ test('adapter profiles preserve explicit models, remove API overrides and always
   for(const flag of ['--continue','--session','--last','resume'])assert.ok(!args.includes(flag));
   assert.throws(()=>codexArguments('another-model'),{code:'model_unavailable'});
   const profile=openCodeProfile('zai-coding-plan/glm-5.3');assert.equal(profile.permission,'deny');assert.deepEqual(profile.enabled_providers,['zai-coding-plan']);
-  const env=safeEnvironment({HOME:'/unchanged',PATH:'/bin',OPENAI_API_KEY:'synthetic',CODEX_API_KEY:'synthetic',OPENAI_BASE_URL:'https://not-used.invalid',AGENT_ROOM_TOKEN:'never-forward',OPENCODE_CONFIG_CONTENT:'untrusted'});
-  assert.equal(env.HOME,'/unchanged');for(const name of ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','AGENT_ROOM_TOKEN','OPENCODE_CONFIG_CONTENT'])assert.equal(env[name],undefined);
+  const env=safeEnvironment({HOME:'/unchanged',PATH:'/bin',OPENAI_API_KEY:'synthetic',CODEX_API_KEY:'synthetic',OPENAI_BASE_URL:'https://not-used.invalid',WAPENTAKE_TOKEN:'never-forward',OPENCODE_CONFIG_CONTENT:'untrusted'});
+  assert.equal(env.HOME,'/unchanged');for(const name of ['OPENAI_API_KEY','CODEX_API_KEY','OPENAI_BASE_URL','WAPENTAKE_TOKEN','OPENCODE_CONFIG_CONTENT'])assert.equal(env[name],undefined);
 });
 
 test('process boundary handles timeout, output limits and split Unicode without a shell',async()=>{

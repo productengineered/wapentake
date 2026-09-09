@@ -6,10 +6,12 @@ const instruction=readFileSync(new URL('../prompts/consultant.md',import.meta.ur
 const schema=JSON.parse(readFileSync(new URL('../schemas/consultant-response.json',import.meta.url),'utf8'));
 const compactMessage=m=>({id:m.id,seq:m.seq,author:m.author_name,role:m.author_role,kind:m.kind,body:m.body,reply_to:m.reply_to,source_ids:m.source_ids??[],stale_context:Boolean(m.stale_context)});
 const compactDecision=d=>({id:d.id,stable_id:d.stable_id,version:d.version,status:d.status,statement:d.statement,rationale:d.rationale,citations:d.citations});
-export function buildPacket(room,project,threadId,participantId,{job=null}={}) {
+export function buildPacket(room,project,threadId,participantId,{job=null,modelProfile}={}) {
   const store=room.store,thread=room.thread(project,threadId),policy=room.policy();
-  const participant=room.participants(project).find(p=>p.id===participantId||p.alias===participantId);
-  if(!participant)fail('not_found','Participant is not registered in this project');
+  const registered=room.participants(project).find(p=>p.id===participantId||p.alias===participantId);
+  if(!registered)fail('not_found','Participant is not registered in this project');
+  const selection = job ? room.store.jobModel(job.id).selection : room.modelSelections([registered.alias], modelProfile).models[registered.alias];
+  const participant = job ? room.jobParticipant(project, job) : { ...registered, model: selection.model, reasoning_effort: selection.reasoning_effort, model_selection: selection };
   const boundary=job?.boundary_seq??store.get('SELECT coalesce(max(seq),0) n FROM messages WHERE project_id=? AND thread_id=?',project,threadId).n;
   const latestQuestion=thread.question_id??job?.question_id??store.get("SELECT id FROM messages WHERE project_id=? AND thread_id=? AND kind='question' ORDER BY seq DESC LIMIT 1",project,threadId)?.id;
   if(!latestQuestion)fail('needs_scoping','Post an explicit question before assembling consultant context');
@@ -48,7 +50,7 @@ export function buildPacket(room,project,threadId,participantId,{job=null}={}) {
   const packet={
     schema_version:1,project:{id:project,label:room.project(project).label},
     thread:{id:threadId,title:thread.title,mode:thread.mode,context_version:thread.context_version,first_round_boundary:boundary},
-    participant:{id:participant.id,alias:participant.alias,requested_model:participant.model},
+    participant:{id:participant.id,alias:participant.alias,requested_model:participant.model,reasoning_effort:participant.reasoning_effort,model_profile:selection.model_profile,model_configuration_hash:selection.configuration_hash},
     discussion_participants:room.participants(project).filter(p=>discussionIds.includes(p.id)).map(p=>({id:p.id,alias:p.alias})),
     direct_question_id:direct.id,current_operator_question_id:currentQuestion.id,
     messages:[...required.values()].sort((a,b)=>a.seq-b.seq).map(compactMessage),

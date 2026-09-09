@@ -9,7 +9,7 @@ import { fixture } from './helpers.mjs';
 
 function setup(t){
   const f=fixture(t),source=fileURLToPath(new URL('..',import.meta.url)),copy=join(f.root,'package'),installRoot=join(f.root,'shared install'),binDir=join(f.root,'local bin');
-  const env={...process.env,AGENT_ROOM_INSTALL_ROOT:installRoot};delete env.AGENT_ROOM_CLI;delete env.AGENT_ROOM_TOKEN;delete env.AGENT_ROOM_STATE_DIR;
+  const env={...process.env,WAPENTAKE_INSTALL_ROOT:installRoot};delete env.WAPENTAKE_CLI;delete env.WAPENTAKE_TOKEN;delete env.WAPENTAKE_STATE_DIR;
   const run=(cmd,args,cwd=f.repo)=>spawnSync(cmd,args,{cwd,env,encoding:'utf8',timeout:60000});
   const success=(cmd,args,cwd)=>{const r=run(cmd,args,cwd);assert.equal(r.status,0,r.stderr+'\n'+r.stdout);return JSON.parse(r.stdout);};
   mkdirSync(copy);const manifest=JSON.parse(readFileSync(join(source,'package.json'),'utf8'));
@@ -26,13 +26,13 @@ test('one shared installation updates two unchanged toolkit adapters while retai
   const second=join(f.root,'second-toolkit');mkdirSync(second);f.room.register({path:second});
   const wrappers=[];
   for(const project of [f.repo,second]){
-    const path=join(project,'.claude','scripts','room.sh');mkdirSync(join(project,'.claude','scripts'),{recursive:true});cpSync(join(f.source,'integrations','room.sh'),path);wrappers.push({path,body:readFileSync(path,'utf8')});
+    const path=join(project,'.claude','scripts','wapentake.sh');mkdirSync(join(project,'.claude','scripts'),{recursive:true});cpSync(join(f.source,'integrations','wapentake.sh'),path);wrappers.push({path,body:readFileSync(path,'utf8')});
     assert.equal(f.success('bash',[path,'--version']).version,'0.1.0');
   }
   result=f.install(archive);assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).status,'already_current');
   result=f.install(f.pack('0.1.1'));assert.equal(result.status,0,result.stderr);assert.notEqual(readlinkSync(join(f.installRoot,'current')),firstTarget);
   for(const wrapper of wrappers){assert.equal(readFileSync(wrapper.path,'utf8'),wrapper.body);assert.equal(f.success('bash',[wrapper.path,'--version']).version,'0.1.1');}
-  assert.equal(f.success(process.execPath,[join(f.binDir,'agent-room'),'--version']).version,'0.1.1');
+  assert.equal(f.success(process.execPath,[join(f.binDir,'wapentake'),'--version']).name,'@productengineered/wapentake');
   const args=['read','--operator','--state-dir',f.state,'--thread',f.thread.id];
   assert.equal(f.success('bash',[wrappers[0].path,...args])[0].id,post.id);
   assert.notEqual(f.run('bash',[wrappers[1].path,...args]).status,0);
@@ -45,8 +45,8 @@ test('a bad update or unrelated command cannot replace the working shared instal
   const before=readlinkSync(join(f.installRoot,'current')),hash=createHash('sha256').update(readFileSync(archive)).digest('hex');
   result=f.install(archive,['--sha256','0'.repeat(64)]);assert.notEqual(result.status,0);assert.match(result.stderr,/SHA-256/);
   assert.equal(readlinkSync(join(f.installRoot,'current')),before);
-  const unrelated=join(f.root,'unrelated');mkdirSync(unrelated);writeFileSync(join(unrelated,'agent-room'),'preserve this unrelated command');
-  result=f.install(archive,['--bin-dir',unrelated]);assert.notEqual(result.status,0);assert.match(result.stderr,/unrelated command/);assert.equal(readFileSync(join(unrelated,'agent-room'),'utf8'),'preserve this unrelated command');
+  const unrelated=join(f.root,'unrelated');mkdirSync(unrelated);writeFileSync(join(unrelated,'wapentake'),'preserve this unrelated command');
+  result=f.install(archive,['--bin-dir',unrelated]);assert.notEqual(result.status,0);assert.match(result.stderr,/unrelated command/);assert.equal(readFileSync(join(unrelated,'wapentake'),'utf8'),'preserve this unrelated command');
   const invalid=join(f.root,'invalid.tgz');writeFileSync(invalid,'not an archive');result=f.install(invalid);assert.notEqual(result.status,0);assert.equal(readlinkSync(join(f.installRoot,'current')),before);
   result=f.install(archive,['--sha256',hash]);assert.equal(result.status,0,result.stderr);
 });
