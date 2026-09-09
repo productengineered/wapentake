@@ -31,13 +31,14 @@ test('review gate requires resolution plus a substantive collaborator dispositio
   assert.equal(disposition([original,{...fixed,author:{login:'coderabbitai[bot]'}}]),undefined);
 });
 
-function apiFixture(t,{changedHead=false,graphFailure=false,reply=fixed}={}){
+function apiFixture(t,{changedHead=false,graphFailure=false,reply=fixed,multiplePRs=false,failFirstPublish=false}={}){
   const savedFetch=globalThis.fetch,savedExit=process.exitCode;
   const environment={GITHUB_REPOSITORY:'fixture/project',GH_TOKEN:'fixture',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_EVENT_PATH:undefined,REVIEW_GATE_READ_ONLY:undefined,SCAN_RESULTS:undefined};
   const saved=Object.fromEntries(Object.keys(environment).map(key=>[key,process.env[key]]));
   for(const [key,value] of Object.entries(environment)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
   t.after(()=>{globalThis.fetch=savedFetch;process.exitCode=savedExit;for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
   const head='a'.repeat(40),pr={number:1,head:{sha:head},draft:false,state:'open'};
+  const second={...pr,number:2,head:{sha:'c'.repeat(40)}};
   const published=[],calls=[];
   globalThis.fetch=async(input,options={})=>{
     const url=new URL(input),path=url.pathname;
@@ -45,8 +46,9 @@ function apiFixture(t,{changedHead=false,graphFailure=false,reply=fixed}={}){
     calls.push({path,query:url.search,variables:body?.variables});
     let data;
     if(path==='/repos/fixture/project')data={default_branch:'main'};
-    else if(path==='/repos/fixture/project/pulls')data=[pr];
+    else if(path==='/repos/fixture/project/pulls')data=multiplePRs?[pr,second]:[pr];
     else if(path==='/repos/fixture/project/pulls/1')data={...pr,head:{sha:changedHead?'b'.repeat(40):head}};
+    else if(path==='/repos/fixture/project/pulls/2')data=second;
     else if(path.endsWith('/statuses'))data=url.searchParams.get('page')==='1'?Array.from({length:100},()=>({context:'another check'})):[complete];
     else if(path.includes('/compare/'))data={status:'ahead'};
     else if(path.endsWith('/issues/12'))data={state:'open'};
@@ -59,7 +61,10 @@ function apiFixture(t,{changedHead=false,graphFailure=false,reply=fixed}={}){
         const nodes=first?[{id:'thread-one',isResolved:true,comments:{nodes:[original,...Array.from({length:99},()=>original)],pageInfo:{hasNextPage:true,endCursor:'comments-next'}}}]:[{id:'thread-two',isResolved:false,comments:{nodes:[original],pageInfo:{hasNextPage:false}}}];
         data={data:{repository:{pullRequest:{reviewThreads:{nodes,pageInfo:{hasNextPage:first,endCursor:first?'threads-next':null}}}}}};
       }
-    }else if(path.endsWith('/check-runs')){published.push(body);data={id:1};}
+    }else if(path.endsWith('/check-runs')){
+      if(failFirstPublish&&body.head_sha===head)return new Response('{}',{status:503});
+      published.push(body);data={id:1};
+    }
     else throw Error(`Unexpected fixture API path ${path}`);
     return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
   };
@@ -103,4 +108,17 @@ test('repository publisher requires trusted scan evidence for the current head',
     assert.equal(f.published.length,2);
     assert.ok(f.published.every(check=>check.conclusion===(head==='a'.repeat(40)?'success':'failure')));
   }
+});
+
+test('both metadata publishers continue to later PRs when one check publication fails',async t=>{
+  const f=apiFixture(t,{multiplePRs:true,failFirstPublish:true});
+  await runGates('--publish');
+  assert.equal(f.published.length,2);
+  assert.ok(f.published.every(check=>check.head_sha==='c'.repeat(40)));
+  assert.equal(process.exitCode,1);
+  f.published.length=0;
+  await runGate();
+  assert.equal(f.published.length,1);
+  assert.equal(f.published[0].head_sha,'c'.repeat(40));
+  assert.equal(process.exitCode,1);
 });

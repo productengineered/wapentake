@@ -98,6 +98,7 @@ export async function runGate(){
   const prs=await pages(`${prefix}/pulls?state=open&base=${encodeURIComponent(repo.default_branch)}`);
   let failed=false;
   for(const pr of prs.filter(pr=>!pr.draft)){
+    try{
     const head=pr.head.sha;
     let errors=[];
     try{
@@ -116,6 +117,10 @@ export async function runGate(){
       await request(`${prefix}/check-runs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:CHECK_NAME,head_sha:head,status:'completed',conclusion:errors.length?'failure':'success',completed_at:new Date().toISOString(),output:{title:errors.length?'Review requirements are incomplete':'Review requirements verified',summary:summary.slice(0,60000)}})});
     }
     failed ||= errors.length>0;
+    }catch(error){
+      console.error(`Could not publish review gate for PR #${pr.number}: ${error.message}`);
+      failed=true;
+    }
   }
   if(failed)process.exitCode=1;
 }

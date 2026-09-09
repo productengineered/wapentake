@@ -52,7 +52,8 @@ export async function runGates(mode){
           const response=spawnSync(command,args,{cwd:directory,env,encoding:'utf8',timeout:180000,maxBuffer:4*1024*1024});
           if(response.status!==0){
             console.error(response.stderr??'');
-            throw Error(`${command} failed during trusted history scan`);
+            const cause=response.error?.code??response.error?.message??(response.signal?`signal ${response.signal}`:`exit ${response.status}`);
+            throw Error(`${command} failed during trusted history scan (${cause})`);
           }
           return response.stdout.trim();
         }
@@ -82,12 +83,17 @@ export async function runGates(mode){
   let results;
   try{results=JSON.parse(process.env.SCAN_RESULTS??'[]');if(!Array.isArray(results))results=[];}catch{results=[];}
   for(const pr of prs){
-    const record=results.find(result=>result.number===pr.number&&result.head===pr.head.sha);
-    const latest=await request(`${prefix}/pulls/${pr.number}`);
-    if(latest.head.sha!==pr.head.sha||latest.state!=='open'||latest.draft)continue;
-    for(const [name,success] of [['Secrets and privacy',record?.secrets===true],['CI required',record?.secrets===true&&record?.ci===true]]){
-      const summary=record?.summary??'Trusted scan evidence is missing or stale. Run Repository gates again.';
-      await request(`${prefix}/check-runs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,head_sha:pr.head.sha,status:'completed',conclusion:success?'success':'failure',completed_at:new Date().toISOString(),output:{title:success?'Trusted requirements verified':'Trusted requirements incomplete',summary}})});
+    try{
+      const record=results.find(result=>result.number===pr.number&&result.head===pr.head.sha);
+      const latest=await request(`${prefix}/pulls/${pr.number}`);
+      if(latest.head.sha!==pr.head.sha||latest.state!=='open'||latest.draft)continue;
+      for(const [name,success] of [['Secrets and privacy',record?.secrets===true],['CI required',record?.secrets===true&&record?.ci===true]]){
+        const summary=record?.summary??'Trusted scan evidence is missing or stale. Run Repository gates again.';
+        await request(`${prefix}/check-runs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,head_sha:pr.head.sha,status:'completed',conclusion:success?'success':'failure',completed_at:new Date().toISOString(),output:{title:success?'Trusted requirements verified':'Trusted requirements incomplete',summary}})});
+      }
+    }catch(error){
+      console.error(`Could not publish gates for PR #${pr.number}: ${error.message}`);
+      process.exitCode=1;
     }
   }
 }
