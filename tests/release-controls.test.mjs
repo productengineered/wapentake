@@ -24,7 +24,7 @@ let result;
 if(args[0]==='release'){result={};}
 else if(args[1].endsWith('/commits/main'))result={sha:config.head};
 else if(args[1].includes('/actions/workflows/'))result={workflow_runs:[{head_sha:config.wrongCommit?'b'.repeat(40):config.head,conclusion:'success'}]};
-else if(args[1].endsWith('/immutable-releases'))result={enabled:true};
+else if(args[1].endsWith('/immutable-releases')){if(config.immutableStatus){process.stderr.write('Immutable API failure (HTTP '+config.immutableStatus+')');process.exit(1);}result={enabled:true};}
 else if(args[1].endsWith('/git/refs')){if(config.existingTag){process.stderr.write('Reference already exists');process.exit(1);}result={};}
 else{process.stderr.write('Unexpected fixture command');process.exit(1);}
 process.stdout.write(JSON.stringify(result));
@@ -49,5 +49,13 @@ test('release rejects CI for another commit and cannot reuse an existing version
     const f=fixture(t,options),result=f.run();assert.notEqual(result.status,0);
     assert.ok(!f.calls().some(args=>args[0]==='release'));
     if(options.wrongCommit)assert.ok(!f.calls().some(args=>args[1]?.endsWith('/git/refs')));
+  }
+});
+
+test('release explains immutable-release 404 while preserving other API errors',t=>{
+  for(const immutableStatus of [404,403]){
+    const f=fixture(t,{immutableStatus}),result=f.run();assert.notEqual(result.status,0);
+    assert.match(result.stderr,immutableStatus===404?/Enable immutable releases before drafting/:/Immutable API failure \(HTTP 403\)/);
+    assert.ok(!f.calls().some(args=>args[1]?.endsWith('/git/refs')));
   }
 });

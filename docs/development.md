@@ -28,15 +28,17 @@ Tools install under Git's private metadata directory after archive SHA-256 verif
 | Browser smoke | Disposable desktop/mobile Chromium; fake consultants; interaction, escaping, passive reads, cancellation, export and overflow checks |
 | Package install | Explicit package allowlist, secret/privacy scan of archive bytes, archive SHA-256, fresh offline shared installation and runtime doctor |
 | Static quality | JavaScript correctness/security lint, syntax, JSON/YAML parsing, local documentation links, version/changelog consistency, ShellCheck, actionlint and privacy regression tests |
-| Secrets and privacy | Gitleaks plus private-file/content rules over the checkout and Git history |
+| Secrets and privacy | Trusted default-branch Gitleaks and private-file/content policy scan fetched PR history as data; PR scanner/configuration changes cannot weaken this run |
 | Dependency security | Trivy checks the npm lockfile, including development dependencies, and blocks high/critical known vulnerabilities |
-| CI required | Requires every listed CI job to succeed; skipped/cancelled/failed jobs cannot produce a passing aggregate |
+| CI required | Trusted default-branch aggregation requires each named CI job and the independent secret scan to succeed; missing/skipped/cancelled/failed jobs cannot produce a passing aggregate |
 | CodeRabbit | Native review status from the CodeRabbit App |
 | Wapentake review gate | Confirms an actual CodeRabbit review completed at the current PR HEAD and checks every review thread and comment page |
 
 CI uses no provider credentials and makes no real model calls. Node dependencies are development-only. Dependabot proposes weekly npm and GitHub Actions updates; updates still go through review and manual merge. Pinned standalone scanner versions in `.github/tools.json` need deliberate updates with verified release checksums.
 
-Workflows use full commit pins, read-only permissions by default, bounded run times and cancellation of superseded CI. Only the review metadata job can write checks, and only the manually dispatched draft-release job can write releases. The review job checks out the default branch and never executes PR code with its write token.
+Workflows use full commit pins, read-only permissions by default, bounded run times and cancellation of superseded CI. The **Repository gates** workflow runs from the default branch after PR changes and CI completion. Its read-only scanner fetches Git objects into a temporary repository without checking out or executing PR files; the scanner, privacy rules, Gitleaks configuration and pinned binaries come from the trusted default branch. Scanner policy updates take effect after review and merge. A separate metadata job publishes the secret and CI aggregate checks. Manually run **Repository gates** to refresh them if an event was missed.
+
+Only the review and repository metadata jobs can write checks, and only the manually dispatched draft-release job can write releases. Metadata jobs check out the default branch and never execute PR code or consume PR-produced artifacts with their write tokens. Ordinary PR tests run with read-only permissions.
 
 ## Review dispositions
 

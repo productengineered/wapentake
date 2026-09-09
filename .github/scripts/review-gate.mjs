@@ -77,7 +77,7 @@ export async function runGate(){
       return;
     }
     const url=new URL(item.reference);
-    if(url.origin!=='https://github.com'||!url.pathname.startsWith(`/${repository}/`))throw Error('Disposition evidence must link to this repository');
+    if(url.origin!=='https://github.com'||!url.pathname.toLowerCase().startsWith(`/${repository.toLowerCase()}/`))throw Error('Disposition evidence must link to this repository');
     const tail=url.pathname.slice(repository.length+2);
     if(item.kind==='Deferred'){
       const match=tail.match(/^issues\/(\d+)$/);

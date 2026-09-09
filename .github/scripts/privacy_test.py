@@ -1,6 +1,7 @@
 import os
 import io
 import subprocess
+import shutil
 import tarfile
 import tempfile
 import unittest
@@ -62,8 +63,10 @@ class PrivacyTests(unittest.TestCase):
         for path in ["state/db.sqlite", "state/db.sqlite-wal", ".env.local", "credentials.json", "packet.json", "viewer-output.log", "settings/models.json"]:
             self.assertTrue(private_path(path), path)
         self.assertFalse(private_path("examples/models.json"))
-        home = b"/" + b"Users" + b"/person/project"
-        self.assertTrue(inspect("readme.md", home))
+        for parent in [b"Users", b"home"]:
+            for suffix in [b"/project", b"", b"\n", b'"']:
+                home = b"/" + parent + b"/person" + suffix
+                self.assertTrue(inspect("readme.md", home), repr(home))
 
     def test_pre_push_rejects_main_update_before_scanning(self):
         script = Path(__file__).resolve().with_name("secrets.py")
@@ -89,6 +92,30 @@ class PrivacyTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unsafe archive entry" if link else "capability URL", result.stderr)
             self.assertNotIn("z" * 48, result.stderr)
+
+    def test_trusted_scan_ignores_candidate_scanner_and_policy(self):
+        source = Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory(prefix="wapentake-trusted-policy-") as temporary:
+            policy = Path(temporary)
+            scripts = policy / ".github/scripts"
+            scripts.mkdir(parents=True)
+            for name in ["secrets.py", "privacy.py"]:
+                shutil.copyfile(source / name, scripts / name)
+            git("-C", str(policy), "init", "-q")
+            binary = policy / ".git/wapentake-tools/gitleaks"
+            binary.parent.mkdir()
+            binary.write_text("#!/bin/sh\nexit 0\n")
+            binary.chmod(0o755)
+            (policy / ".gitleaks.toml").write_text("[extend]\nuseDefault = true\n")
+            Path(".github/scripts").mkdir(parents=True)
+            Path(".github/scripts/secrets.py").write_text("raise SystemExit(0)\n")
+            Path(".gitleaks.toml").write_text("[extend]\nuseDefault = false\n")
+            Path("credentials.json").write_text("{}")
+            git("add", ".")
+            git("commit", "-qm", "candidate tries to weaken policy")
+            result = subprocess.run(["python3", str(scripts / "secrets.py"), "--history", "--trusted-policy"], text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("private runtime file", result.stderr)
 
 
 if __name__ == "__main__":

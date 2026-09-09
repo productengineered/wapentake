@@ -80,18 +80,6 @@ jobs:
       - run: npm run lint
       - run: npm run check:quality
       - run: python3 -m unittest discover -s .github/scripts -p '*_test.py'
-  secrets:
-    name: Secrets and privacy
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - run: python3 .github/scripts/tools.py gitleaks
-      - run: python3 .github/scripts/secrets.py --staged
-      - run: python3 .github/scripts/secrets.py --history
   dependencies:
     name: Dependency security
     runs-on: ubuntu-24.04
@@ -102,22 +90,3 @@ jobs:
           persist-credentials: false
       - run: python3 .github/scripts/tools.py trivy
       - run: trivy fs --scanners vuln --pkg-types library --include-dev-deps --severity HIGH,CRITICAL --exit-code 1 package-lock.json
-  required:
-    name: CI required
-    if: always()
-    needs: [core, browser, package, quality, secrets, dependencies]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    steps:
-      - name: Require every job to succeed
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          results = json.loads(os.environ['RESULTS'])
-          failed = [name for name, job in results.items() if job['result'] != 'success']
-          if failed:
-              raise SystemExit('Required jobs did not succeed: ' + ', '.join(failed))
-          print('All required CI jobs succeeded')
-          PY

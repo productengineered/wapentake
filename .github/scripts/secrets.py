@@ -25,6 +25,7 @@ def main():
     mode.add_argument("--history", action="store_true")
     mode.add_argument("--pre-push", action="store_true")
     mode.add_argument("--archive")
+    parser.add_argument("--trusted-policy", action="store_true", help="Use policy and tools beside this script, independent of the scanned repository")
     args = parser.parse_args()
     root = Path(git("rev-parse", "--show-toplevel").decode().strip())
     os.chdir(root)
@@ -38,8 +39,11 @@ def main():
                 revisions.append(local_oid)
     elif args.history:
         revisions = ["--all"]
-    binary = Path(git("rev-parse", "--git-path", "wapentake-tools/gitleaks").decode().strip()).resolve()
+    policy = Path(__file__).resolve().parents[2] if args.trusted_policy else root
+    binary = Path(git("-C", str(policy), "rev-parse", "--path-format=absolute", "--git-path", "wapentake-tools/gitleaks").decode().strip())
     if not binary.is_file():
+        if args.trusted_policy:
+            raise ValueError("Trusted policy requires its pinned Gitleaks installation")
         found = shutil.which("gitleaks")
         if not found:
             raise ValueError("Run python3 .github/scripts/tools.py gitleaks before committing or pushing")
@@ -48,7 +52,7 @@ def main():
         scratch = Path(temporary)
         # Use the reviewed configuration and disable inline suppressions and ignore files.
         config = scratch / "gitleaks.toml"
-        config.write_bytes(git("show", ":.gitleaks.toml") if args.staged else (root / ".gitleaks.toml").read_bytes())
+        config.write_bytes(git("show", ":.gitleaks.toml") if args.staged and not args.trusted_policy else (policy / ".gitleaks.toml").read_bytes())
         ignore = scratch / "empty-ignore"
         ignore.touch()
         common = ["--config", str(config), "--redact=100", "--ignore-gitleaks-allow", "--gitleaks-ignore-path", str(ignore), "--no-banner", "--no-color", "--timeout", "60"]

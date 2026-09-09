@@ -10,6 +10,10 @@
       "linux-x64": [
         "gitleaks_8.30.1_linux_x64.tar.gz",
         "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+      ],
+      "darwin-x64": [
+        "gitleaks_8.30.1_darwin_x64.tar.gz",
+        "dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709"
       ]
     }
   },
@@ -24,6 +28,10 @@
       "linux-x64": [
         "actionlint_1.7.12_linux_amd64.tar.gz",
         "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+      ],
+      "darwin-x64": [
+        "actionlint_1.7.12_darwin_amd64.tar.gz",
+        "5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644"
       ]
     }
   },
@@ -38,6 +46,10 @@
       "linux-x64": [
         "shellcheck-v0.11.0.linux.x86_64.tar.gz",
         "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"
+      ],
+      "darwin-x64": [
+        "shellcheck-v0.11.0.darwin.x86_64.tar.gz",
+        "c2c15e08df0e8fbc374c335b230a7ee958c313fa5714817a59aa59f1aa594f51"
       ]
     }
   },
@@ -52,6 +64,10 @@
       "linux-x64": [
         "trivy_0.74.0_Linux-64bit.tar.gz",
         "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a"
+      ],
+      "darwin-x64": [
+        "trivy_0.74.0_macOS-64bit.tar.gz",
+        "472816f6888dda689d075c30254d4210b4d1035acf365aa72332f584c2f60485"
       ]
     }
   }

@@ -29,7 +29,7 @@ def inspect(path, data):
         errors.append(f"{path}: private runtime file")
     if re.search(rb"#token=[A-Za-z0-9_-]{30,200}", data):
         errors.append(f"{path}: capability URL")
-    if re.search(rb"(?:/Users/|/home/)[A-Za-z0-9_.-]+/", data):
+    if re.search(rb"(?:/Users/|/home/)[A-Za-z0-9_.-]+(?=/|\s|[\"']|$)", data):
         errors.append(f"{path}: personal home path")
     return errors
 
