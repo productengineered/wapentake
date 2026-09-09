@@ -26,7 +26,7 @@ Tools install under Git's private metadata directory after archive SHA-256 verif
 |---|---|
 | Core Node 24 / Core Node 26 | The complete offline suite on macOS, including capabilities, worker accounting, recovery, migration, provenance and installation |
 | Browser smoke | Disposable desktop/mobile Chromium; fake consultants; interaction, escaping, passive reads, cancellation, export and overflow checks |
-| Package install | Explicit package allowlist, archive SHA-256, fresh offline shared installation and runtime doctor |
+| Package install | Explicit package allowlist, secret/privacy scan of archive bytes, archive SHA-256, fresh offline shared installation and runtime doctor |
 | Static quality | JavaScript correctness/security lint, syntax, JSON/YAML parsing, local documentation links, version/changelog consistency, ShellCheck, actionlint and privacy regression tests |
 | Secrets and privacy | Gitleaks plus private-file/content rules over the checkout and Git history |
 | Dependency security | Trivy checks the npm lockfile, including development dependencies, and blocks high/critical known vulnerabilities |

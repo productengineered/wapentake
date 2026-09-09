@@ -19,9 +19,10 @@ try{
   const allowed=new Set(['package.json',...manifest.files]);
   for(const file of packed.files){
     assert.ok(allowed.has(file.path)||allowed.has(file.path.split('/')[0]),`Unexpected package file: ${file.path}`);
-    assert.ok(!/(?:^|\/)(?:\.env[^/]*|node_modules|\.github|tests|models\.json)$/.test(file.path)||file.path==='examples/models.json',`Private/development file: ${file.path}`);
+    assert.ok(!/(?:^|\/)(?:\.env[^/]*|node_modules|\.github|tests|models\.json)(?:\/|$)/.test(file.path)||file.path==='examples/models.json',`Private/development file: ${file.path}`);
   }
   const archive=join(destination,packed.filename);
+  run('python3',['.github/scripts/secrets.py','--archive',archive]);
   const hash=createHash('sha256').update(readFileSync(archive)).digest('hex');
   writeFileSync(join(destination,'SHA256SUMS'),`${hash}  ${packed.filename}\n`);
   const result=JSON.parse(run(process.execPath,['scripts/install-local.mjs','--from',archive,'--sha256',hash,'--install-root',join(scratch,'installation'),'--bin-dir',join(scratch,'bin')]));

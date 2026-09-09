@@ -5,9 +5,10 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
-from pathlib import Path
-from privacy import check, git, history_entries, index_entries
+from pathlib import Path, PurePosixPath
+from privacy import check, git, history_entries, index_entries, inspect
 
 
 def run(args):
@@ -23,6 +24,7 @@ def main():
     mode.add_argument("--staged", action="store_true")
     mode.add_argument("--history", action="store_true")
     mode.add_argument("--pre-push", action="store_true")
+    mode.add_argument("--archive")
     args = parser.parse_args()
     root = Path(git("rev-parse", "--show-toplevel").decode().strip())
     os.chdir(root)
@@ -59,6 +61,28 @@ def main():
                 target = snapshot / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(git("cat-file", "blob", oid))
+            run([str(binary), "dir", str(snapshot), *common])
+        if args.archive:
+            snapshot = scratch / "archive"
+            snapshot.mkdir()
+            errors = []
+            seen = set()
+            with tarfile.open(args.archive, "r:gz") as archive:
+                for member in archive:
+                    path = PurePosixPath(member.name)
+                    if not member.isfile() or path.is_absolute() or ".." in path.parts or path.parts[0] != "package":
+                        raise ValueError("Non-regular or unsafe archive entry")
+                    relative = PurePosixPath(*path.parts[1:]).as_posix()
+                    if relative in seen or relative == ".":
+                        raise ValueError("Duplicate or empty archive entry")
+                    seen.add(relative)
+                    data = archive.extractfile(member).read()
+                    errors.extend(inspect(relative, data))
+                    target = snapshot / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+            if errors:
+                raise ValueError("\n".join(sorted(set(errors))))
             run([str(binary), "dir", str(snapshot), *common])
         for revision in sorted(set(revisions)):
             check(history_entries(revision))
