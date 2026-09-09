@@ -1,5 +1,7 @@
 import os
+import io
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +20,10 @@ class PrivacyTests(unittest.TestCase):
         git("config", "user.name", "Fixture")
         git("config", "user.email", "fixture@example.invalid")
         git("config", "commit.gpgsign", "false")
+        binary = Path(".git/wapentake-tools/gitleaks")
+        binary.parent.mkdir()
+        binary.write_text("#!/bin/sh\nexit 0\n")
+        binary.chmod(0o755)
 
     def tearDown(self):
         os.chdir(self.previous)
@@ -64,6 +70,25 @@ class PrivacyTests(unittest.TestCase):
         result = subprocess.run(["python3", str(script), "--pre-push"], input="refs/heads/main " + "a" * 40 + " refs/heads/main " + "b" * 40 + "\n", text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Update main through a reviewed pull request", result.stderr)
+
+    def test_archive_bytes_catch_untracked_private_content_and_refuse_symlinks(self):
+        script = Path(__file__).resolve().with_name("secrets.py")
+        Path(".gitleaks.toml").write_text("[extend]\nuseDefault = true\n")
+        for link in [False, True]:
+            with tarfile.open("fixture.tgz", "w:gz") as archive:
+                item = tarfile.TarInfo("package/docs/note.md")
+                data = ("#token=" + "z" * 48).encode()
+                if link:
+                    item.type = tarfile.SYMTYPE
+                    item.linkname = "outside"
+                    archive.addfile(item)
+                else:
+                    item.size = len(data)
+                    archive.addfile(item, io.BytesIO(data))
+            result = subprocess.run(["python3", str(script), "--archive", str(Path("fixture.tgz").resolve())], text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unsafe archive entry" if link else "capability URL", result.stderr)
+            self.assertNotIn("z" * 48, result.stderr)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ export function assess(statuses,threads){
   return errors;
 }
 
-async function main(){
+export async function runGate(){
   const repository=process.env.GITHUB_REPOSITORY;
   if(!/^[\w.-]+\/[\w.-]+$/.test(repository??''))throw Error('Invalid GITHUB_REPOSITORY');
   const [owner,name]=repository.split('/');
@@ -120,4 +120,4 @@ async function main(){
   if(failed)process.exitCode=1;
 }
 
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(error=>{console.error(error.message);process.exitCode=1;});
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)runGate().catch(error=>{console.error(error.message);process.exitCode=1;});
