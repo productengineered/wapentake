@@ -87,9 +87,10 @@ export async function runGates(mode){
       const record=results.find(result=>result.number===pr.number&&result.head===pr.head.sha);
       const latest=await request(`${prefix}/pulls/${pr.number}`);
       if(latest.head.sha!==pr.head.sha||latest.state!=='open'||latest.draft)continue;
-      for(const [name,success] of [['Secrets and privacy',record?.secrets===true],['CI required',record?.secrets===true&&record?.ci===true]]){
+      for(const [name,success] of [['Wapentake / secrets',record?.secrets===true],['Wapentake / CI',record?.secrets===true&&record?.ci===true]]){
         const summary=record?.summary??'Trusted scan evidence is missing or stale. Run Repository gates again.';
-        await request(`${prefix}/check-runs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,head_sha:pr.head.sha,status:'completed',conclusion:success?'success':'failure',completed_at:new Date().toISOString(),output:{title:success?'Trusted requirements verified':'Trusted requirements incomplete',summary}})});
+        console.log(`PR #${pr.number} ${name}: ${summary}`);
+        await request(`${prefix}/statuses/${pr.head.sha}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({context:name,state:success?'success':'failure',description:summary.replace(/\s+/g,' ').slice(0,140),target_url:`https://github.com/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`})});
       }
     }catch(error){
       console.error(`Could not publish gates for PR #${pr.number}: ${error.message}`);

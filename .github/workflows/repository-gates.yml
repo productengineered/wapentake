@@ -42,7 +42,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      checks: write
+      issues: read
+      statuses: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,7 +52,41 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24.20.0'
-      - run: node .github/scripts/repository-gates.mjs --publish
+      - name: Publish verified statuses
         env:
           GH_TOKEN: ${{ github.token }}
           SCAN_RESULTS: ${{ needs.scan.outputs.results }}
+        run: |
+          node --input-type=module <<'JS'
+          // Compatibility for main revisions that still publish through the Checks API.
+          // All decisions and HEAD-race checks remain in the trusted main scripts.
+          const request = globalThis.fetch;
+          const repository = process.env.GITHUB_REPOSITORY;
+          const prefix = `https://api.github.com/repos/${repository}`;
+          const contexts = new Map([
+            ['Secrets and privacy', 'Wapentake / secrets'],
+            ['CI required', 'Wapentake / CI'],
+            ['Wapentake review gate', 'Wapentake / review'],
+          ]);
+          globalThis.fetch = (url, options = {}) => {
+            if (url === `${prefix}/check-runs` && options.method === 'POST') {
+              const report = JSON.parse(options.body);
+              if (!contexts.has(report.name) || !/^[a-f0-9]{40}$/.test(report.head_sha) ||
+                  report.status !== 'completed' || !['success', 'failure'].includes(report.conclusion)) {
+                throw Error('Refusing an unknown legacy gate report');
+              }
+              const body = JSON.stringify({
+                context: contexts.get(report.name),
+                state: report.conclusion,
+                description: String(report.output?.summary ?? '').replace(/\s+/g, ' ').slice(0, 140),
+                target_url: `https://github.com/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+              });
+              return request(`${prefix}/statuses/${report.head_sha}`, { ...options, body });
+            }
+            return request(url, options);
+          };
+          const { runGates } = await import('./.github/scripts/repository-gates.mjs');
+          const { runGate } = await import('./.github/scripts/review-gate.mjs');
+          await runGates('--publish');
+          if (process.env.GITHUB_EVENT_NAME === 'workflow_dispatch') await runGate();
+          JS
