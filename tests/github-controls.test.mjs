@@ -122,3 +122,15 @@ test('both metadata publishers continue to later PRs when one check publication 
   assert.equal(f.published[0].head_sha,'c'.repeat(40));
   assert.equal(process.exitCode,1);
 });
+
+test('incomplete reviews block the required check without leaving a stale publisher failure',async t=>{
+  const f=apiFixture(t);
+  await runGate();
+  assert.equal(f.published[0].conclusion,'failure');
+  assert.notEqual(process.exitCode,1);
+  process.env.REVIEW_GATE_READ_ONLY='1';
+  f.published.length=0;
+  await runGate();
+  assert.deepEqual(f.published,[]);
+  assert.equal(process.exitCode,1);
+});
