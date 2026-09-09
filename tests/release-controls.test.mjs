@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -22,15 +22,14 @@ const args=process.argv.slice(2),config=JSON.parse(fs.readFileSync('fixture.json
 fs.appendFileSync('calls.jsonl',JSON.stringify(args)+'\\n');
 let result;
 if(args[0]==='release'){result={};}
-else if(args[1].endsWith('/commits/main'))result={sha:config.head};
+else if(args[1].endsWith('/commits/main')){if(config.apiStatus){process.stderr.write('Repository API failure (HTTP '+config.apiStatus+')');process.exit(1);}result={sha:config.head};}
 else if(args[1].includes('/actions/workflows/'))result={workflow_runs:[{head_sha:config.wrongCommit?'b'.repeat(40):config.head,conclusion:'success'}]};
-else if(args[1].endsWith('/immutable-releases')){if(config.immutableStatus){process.stderr.write('Immutable API failure (HTTP '+config.immutableStatus+')');process.exit(1);}result={enabled:true};}
 else if(args[1].endsWith('/git/refs')){if(config.existingTag){process.stderr.write('Reference already exists');process.exit(1);}result={};}
 else{process.stderr.write('Unexpected fixture command');process.exit(1);}
 process.stdout.write(JSON.stringify(result));
 `,{mode:0o755});
-  const run=()=>spawnSync(process.execPath,[fileURLToPath(new URL('../.github/scripts/release.mjs',import.meta.url))],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}:${process.env.PATH}`,GITHUB_REPOSITORY:'fixture/project',GITHUB_SHA:head,GITHUB_REF:'refs/heads/main',WAPENTAKE_PACKAGE_DIR:root}});
-  const calls=()=>readFileSync(join(root,'calls.jsonl'),'utf8').trim().split('\n').map(line=>JSON.parse(line));
+  const run=()=>spawnSync(process.execPath,[fileURLToPath(new URL('../.github/scripts/release.mjs',import.meta.url))],{cwd:root,encoding:'utf8',env:{...process.env,PATH:`${bin}:${process.env.PATH}`,GITHUB_REPOSITORY:'fixture/project',GITHUB_SHA:head,GITHUB_REF:'refs/heads/main',IMMUTABLE_RELEASES_CONFIRMED:options.confirmation??'true',WAPENTAKE_PACKAGE_DIR:root}});
+  const calls=()=>existsSync(join(root,'calls.jsonl'))?readFileSync(join(root,'calls.jsonl'),'utf8').trim().split('\n').map(line=>JSON.parse(line)):[];
   return {run,calls,head};
 }
 
@@ -42,6 +41,7 @@ test('release reserves a protected tag at the verified commit before creating it
   assert.ok(calls[tag].includes('ref=refs/tags/v0.3.0'));
   assert.ok(calls[release].includes('--verify-tag'));
   assert.ok(calls[release].includes('--draft'));
+  assert.ok(!calls.some(args=>args[1]?.endsWith('/immutable-releases')));
 });
 
 test('release rejects CI for another commit and cannot reuse an existing version tag',t=>{
@@ -52,10 +52,16 @@ test('release rejects CI for another commit and cannot reuse an existing version
   }
 });
 
-test('release explains immutable-release 404 while preserving other API errors',t=>{
-  for(const immutableStatus of [404,403]){
-    const f=fixture(t,{immutableStatus}),result=f.run();assert.notEqual(result.status,0);
-    assert.match(result.stderr,immutableStatus===404?/Enable immutable releases before drafting/:/Immutable API failure \(HTTP 403\)/);
-    assert.ok(!f.calls().some(args=>args[1]?.endsWith('/git/refs')));
+test('draft requires explicit immutable-setting confirmation before API operations',t=>{
+  for(const confirmation of ['','false','yes']){
+    const f=fixture(t,{confirmation}),result=f.run();assert.notEqual(result.status,0);
+    assert.match(result.stderr,/Confirm immutable releases are enabled/);
+    assert.deepEqual(f.calls(),[]);
   }
+});
+
+test('draft preserves repository API failures without creating a tag',t=>{
+  const f=fixture(t,{apiStatus:403}),result=f.run();assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Repository API failure \(HTTP 403\)/);
+  assert.ok(!f.calls().some(args=>args[1]?.endsWith('/git/refs')));
 });

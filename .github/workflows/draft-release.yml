@@ -1,6 +1,12 @@
 name: Draft release
 on:
   workflow_dispatch:
+    inputs:
+      immutable_releases_confirmed:
+        description: Confirm immutable releases are enabled in repository settings
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -31,4 +37,5 @@ jobs:
         run: node .github/scripts/release.mjs
         env:
           GH_TOKEN: ${{ github.token }}
+          IMMUTABLE_RELEASES_CONFIRMED: ${{ inputs.immutable_releases_confirmed }}
           WAPENTAKE_PACKAGE_DIR: ${{ runner.temp }}/wapentake-release
