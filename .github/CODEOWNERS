@@ -1,0 +1,10 @@
+# Ownership metadata. Required human approval needs a separate reviewer identity.
+* @productengineered
+/src/identity.mjs @productengineered
+/src/adapters/ @productengineered
+/src/models.mjs @productengineered
+/migrations/ @productengineered
+/scripts/install-local.mjs @productengineered
+/.github/ @productengineered
+/.githooks/ @productengineered
+/.gitleaks.toml @productengineered

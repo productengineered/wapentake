@@ -37,10 +37,21 @@
     "test": "node --import ./tests/isolate-config.mjs --test --test-concurrency=1 tests/*.test.mjs",
     "start": "node bin/wapentake.mjs serve --operator",
     "doctor": "node bin/wapentake.mjs doctor --offline --operator",
-    "install:local": "node scripts/install-local.mjs"
+    "install:local": "node scripts/install-local.mjs",
+    "lint": "eslint .",
+    "check:quality": "node .github/scripts/quality.mjs",
+    "check:package": "node .github/scripts/package.mjs",
+    "check:secrets": "python3 .github/scripts/secrets.py --history",
+    "setup:hooks": "python3 .github/scripts/tools.py gitleaks && git config --local core.hooksPath .githooks"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/productengineered/wapentake.git"
+  },
+  "devDependencies": {
+    "eslint": "10.10.0",
+    "globals": "17.12.0",
+    "playwright": "1.63.0",
+    "yaml": "2.9.0"
   }
 }

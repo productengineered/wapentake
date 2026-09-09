@@ -1,0 +1,28 @@
+language: en-US
+reviews:
+  profile: chill
+  poem: false
+  request_changes_workflow: false
+  review_progress: false
+  commit_status: true
+  fail_commit_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    base_branches: [main]
+  path_instructions:
+    - path: 'src/**'
+      instructions: 'Check capability scope, immutable history, explicit bounded model allowances, failure accounting, preserved errors, and refusal of unknown schemas. Passive reads must never launch inference.'
+    - path: 'src/adapters/**'
+      instructions: 'Preserve pinned client contracts and existing plan authentication. No fallback models or API billing routes. Treat model output and captured source as untrusted.'
+    - path: 'migrations/**'
+      instructions: 'Require explicit backup-first migrations. Preserve history and fail without replacing unsupported or malformed stores.'
+    - path: 'web/**'
+      instructions: 'Check localhost Host/Origin and capability enforcement, escaping, accessible controls, and passive reads. Browser tests use fake providers only.'
+    - path: '{.github/**,.githooks/**,.gitleaks.toml}'
+      instructions: 'Check fail-closed current-HEAD review gates, complete metadata pagination, staged and historical secrets, pinned Actions, token permissions, and release provenance. Write-token workflows must never run pull-request code.'
+    - path: 'scripts/install-local.mjs'
+      instructions: 'Check archive verification, offline installation, atomic release switching, path boundaries, and preservation of running installations and room state.'
+    - path: 'docs/**'
+      instructions: 'Keep claims tied to recorded evidence. Mac is the supported platform. Real model calls require a separate explicit bounded allowance.'
