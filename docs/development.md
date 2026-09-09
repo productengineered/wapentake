@@ -57,9 +57,9 @@ The gate refreshes on PR updates, CodeRabbit statuses and PR conversation commen
 
 ## Draft releases
 
-Run **Draft release** manually from `main` after its latest CI succeeds. The workflow verifies the exact commit, package version/changelog, secret history, package contents, SHA-256 and a fresh offline installation. It creates a protected `vVERSION` tag at that commit and a draft release containing the package and `SHA256SUMS`. It refuses duplicate version tags; it does not update existing releases. If draft creation or asset upload fails after the tag is created, inspect that tag and the workflow output before completing the draft manually; a rerun cannot replace the reserved version.
+Run **Draft release** manually from `main` after its latest CI succeeds. First verify that immutable releases are enabled in repository settings (or run `gh api repos/productengineered/wapentake/immutable-releases` with your maintainer login and confirm `enabled: true`), then set the required confirmation input. The Actions token cannot read this admin-only setting; the workflow requires explicit operator confirmation and does not receive an admin credential. The workflow verifies the exact commit, package version/changelog, secret history, package contents, SHA-256 and a fresh offline installation. It creates a protected `vVERSION` tag at that commit and a draft release containing the package and `SHA256SUMS`. It refuses duplicate version tags; it does not update existing releases. If draft creation or asset upload fails after the tag is created, inspect that tag and the workflow output before completing the draft manually; a rerun cannot replace the reserved version.
 
-Inspect the draft and publish it manually. Immutable releases protect the published tag and assets. Repository tag rules also block updates and deletion of `v*` tags. Release notes may still be edited. There is no automatic merge, publication, npm publishing or application auto-update.
+Inspect the draft, verify that immutable releases are still enabled, and publish it manually. Immutable releases protect the published tag and assets. Repository tag rules also block updates and deletion of `v*` tags. Release notes may still be edited. There is no automatic merge, publication, npm publishing or application auto-update.
 
 ## Security coverage
 
