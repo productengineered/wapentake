@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export const CHECK_NAME='Wapentake review gate';
+export const REVIEW_CONTEXT='Wapentake / review';
 const trusted=new Set(['OWNER','MEMBER','COLLABORATOR']);
 
 export function disposition(comments){
@@ -114,7 +114,7 @@ export async function runGate(){
     const summary=errors.length?errors.join('\n\n'):'CodeRabbit completed the current HEAD review. Every review thread is resolved with a written, linked disposition.';
     console.log(`PR #${pr.number} at ${head}: ${summary}`);
     if(process.env.REVIEW_GATE_READ_ONLY!=='1'){
-      await request(`${prefix}/check-runs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:CHECK_NAME,head_sha:head,status:'completed',conclusion:errors.length?'failure':'success',completed_at:new Date().toISOString(),output:{title:errors.length?'Review requirements are incomplete':'Review requirements verified',summary:summary.slice(0,60000)}})});
+      await request(`${prefix}/statuses/${head}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({context:REVIEW_CONTEXT,state:errors.length?'failure':'success',description:summary.replace(/\s+/g,' ').slice(0,140),target_url:`https://github.com/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`})});
     }
     // The required check carries eligibility; publishing a blocking result is successful delivery.
     if(process.env.REVIEW_GATE_READ_ONLY==='1')failed ||= errors.length>0;
