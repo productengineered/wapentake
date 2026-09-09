@@ -9,3 +9,4 @@ coverage/
 *.token
 *.sqlite
 *.sqlite-*
+__pycache__/

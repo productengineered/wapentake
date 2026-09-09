@@ -1,0 +1,92 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    name: Core Node ${{ matrix.major }}
+    runs-on: macos-26
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - major: 24
+            version: '24.20.0'
+          - major: 26
+            version: '26.0.0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.version }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
+  browser:
+    name: Browser smoke
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.20.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx --no-install playwright install chromium
+      - run: node --import ./tests/isolate-config.mjs tests/browser-smoke.mjs
+        env:
+          WAPENTAKE_PLAYWRIGHT_MODULE: ${{ github.workspace }}/node_modules/playwright/index.mjs
+          WAPENTAKE_SCREENSHOT_DIR: ${{ runner.temp }}/wapentake-browser
+  package:
+    name: Package install
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.20.0'
+      - run: python3 .github/scripts/tools.py gitleaks
+      - run: npm run check:package
+  quality:
+    name: Static quality
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.20.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: python3 .github/scripts/tools.py actionlint shellcheck
+      - run: npm run lint
+      - run: npm run check:quality
+      - run: python3 -m unittest discover -s .github/scripts -p '*_test.py'
+  dependencies:
+    name: Dependency security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 .github/scripts/tools.py trivy
+      - run: trivy fs --scanners vuln --pkg-types library --include-dev-deps --severity HIGH,CRITICAL --exit-code 1 package-lock.json

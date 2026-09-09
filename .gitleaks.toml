@@ -1,0 +1,11 @@
+title = "Wapentake secret detection"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "wapentake-capability-url"
+description = "Local operator or actor capability URL"
+regex = '''#token=([A-Za-z0-9_-]{30,200})'''
+secretGroup = 1
+keywords = ["#token="]

@@ -20,7 +20,7 @@ npm run install:local
 
 This packs the source and installs an independent copy in `~/.local/share/wapentake/releases/`, then switches the `current` link after an offline runtime check. The shared command is `~/.local/bin/wapentake`. If that directory is already on your `PATH`, use `wapentake` directly; otherwise use the full path. The installer does not edit shell configuration.
 
-For a 0.1 store, follow the [0.2 consumer upgrade](docs/consumer-upgrade.md): stop old processes and run the explicit backup-first migration before reopening it. Run the same installation command after updating this repository to apply an Wapentake update. Compatible toolkit adapters continue using the shared installation without a toolkit release. Running processes keep their existing release until restarted; the installer does not interrupt active consultations. See [installation and updates](docs/installation.md) for archive installs, retained versions and data handling.
+For a 0.1 store, follow the [0.2 consumer upgrade](docs/consumer-upgrade.md): stop old processes and run the explicit backup-first migration before reopening it. Run the same installation command after updating this repository to apply a Wapentake update. Compatible toolkit adapters continue using the shared installation without a toolkit release. Running processes keep their existing release until restarted; the installer does not interrupt active consultations. See [installation and updates](docs/installation.md) for archive installs, retained versions and data handling.
 
 For source development, run `node bin/wapentake.mjs` from this repository. The examples below use the installed `wapentake` command.
 
@@ -138,6 +138,8 @@ Disagreement and stuck-work triggers default off. Enable them explicitly with `c
 Automatic follow-up can be set to at most one round. It waits for initial answers to finish, only targets participants already in that discussion, and obeys the same thread/global allowance. Leave it off until the live pilot establishes useful behavior.
 
 ## Development verification
+
+See [development and repository controls](docs/development.md) for local hooks, required CI, review dispositions and draft releases.
 
 ```sh
 npm test
