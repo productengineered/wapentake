@@ -1,7 +1,5 @@
 # Wapentake
 
-Wapentake is the project’s new name, starting with version 0.3.0.
-
 A local conversation room for a human, active coding agents, GLM through OpenCode, and Astra through Codex. Messages, selected evidence and versioned decisions survive fresh agent sessions. The CLI and browser interface use the same command contracts.
 
 **Status:** 0.3.0 standalone Mac development preview. Offline behavior and a six-call pilot through the existing plans are verified. The application has its own repository, installation and update path; toolkits connect through optional adapters. Actual workflow adoption remains separate. Codex does not report its resolved model identity. See [verification](docs/verification.md) for evidence and limits. Execution starts disabled.
