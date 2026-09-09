@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { Script } from 'node:vm';
+import { parse } from 'yaml';
 import { assess, disposition, runGate } from '../.github/scripts/review-gate.mjs';
 import { assessCI, CI_JOBS, runGates } from '../.github/scripts/repository-gates.mjs';
 
@@ -146,4 +149,27 @@ test('completed review publishes a commit status for the current head with workf
   assert.equal(f.published[0].context,'Wapentake / review');
   assert.equal(f.published[0].state,'success');
   assert.equal(f.published[0].target_url,'https://github.com/fixture/project/actions/runs/123');
+});
+
+test('legacy report adapter preserves failures and refuses unknown gate reports',async()=>{
+  const workflow=parse(readFileSync(new URL('../.github/workflows/repository-gates.yml',import.meta.url),'utf8'));
+  const step=workflow.jobs.publish.steps.find(step=>step.name==='Publish verified statuses');
+  const source=step.run.split("node --input-type=module <<'JS'\n")[1].split('const { runGates }')[0];
+  const calls=[];
+  const sandbox={process:{env:{GITHUB_REPOSITORY:'fixture/project',GITHUB_RUN_ID:'123'}},fetch:async(url,options)=>{calls.push({url,options});return 'delivered';}};
+  new Script(source).runInNewContext(sandbox);
+  const prefix='https://api.github.com/repos/fixture/project';
+  const report={name:'CI required',head_sha:'a'.repeat(40),status:'completed',conclusion:'failure',output:{summary:'The required CI run did not pass.'}};
+  const publish=report=>sandbox.fetch(`${prefix}/check-runs`,{method:'POST',body:JSON.stringify(report),headers:{Authorization:'fixture'}});
+  assert.equal(await publish(report),'delivered');
+  assert.equal(calls[0].url,`${prefix}/statuses/${report.head_sha}`);
+  assert.equal(JSON.parse(calls[0].options.body).state,'failure');
+  assert.equal(JSON.parse(calls[0].options.body).context,'Wapentake / CI');
+  assert.equal(calls[0].options.headers.Authorization,'fixture');
+  for(const invalid of [{name:'unrecognized'},{head_sha:'main'},{status:'queued'},{conclusion:'neutral'}]){
+    assert.throws(()=>publish({...report,...invalid}),/Refusing an unknown legacy gate report/);
+  }
+  assert.equal(calls.length,1);
+  await sandbox.fetch(`${prefix}/pulls`,{method:'GET'});
+  assert.equal(calls[1].url,`${prefix}/pulls`);
 });
