@@ -34,7 +34,7 @@ test('review gate requires resolution plus a substantive collaborator dispositio
   assert.equal(disposition([original,{...fixed,author:{login:'coderabbitai[bot]'}}]),undefined);
 });
 
-function apiFixture(t,{changedHead=false,graphFailure=false,reply=fixed,multiplePRs=false,failFirstPublish=false,cleanReview=false}={}){
+function apiFixture(t,{changedHead=false,graphFailure=false,reply=fixed,multiplePRs=false,failFirstPublish=false,cleanReview=false,existingReview=null}={}){
   const savedFetch=globalThis.fetch,savedExit=process.exitCode;
   const environment={GITHUB_REPOSITORY:'fixture/project',GITHUB_RUN_ID:'123',GH_TOKEN:'fixture',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_EVENT_PATH:undefined,REVIEW_GATE_READ_ONLY:undefined,SCAN_RESULTS:undefined};
   const saved=Object.fromEntries(Object.keys(environment).map(key=>[key,process.env[key]]));
@@ -52,7 +52,7 @@ function apiFixture(t,{changedHead=false,graphFailure=false,reply=fixed,multiple
     else if(path==='/repos/fixture/project/pulls')data=multiplePRs?[pr,second]:[pr];
     else if(path==='/repos/fixture/project/pulls/1')data={...pr,head:{sha:changedHead?'b'.repeat(40):head}};
     else if(path==='/repos/fixture/project/pulls/2')data=second;
-    else if(path.endsWith('/statuses'))data=url.searchParams.get('page')==='1'?Array.from({length:100},()=>({context:'another check'})):[complete];
+    else if(path.endsWith('/statuses'))data=url.searchParams.get('page')==='1'?[...(existingReview?[existingReview]:[]),...Array.from({length:100},()=>({context:'another check'}))].slice(0,100):[complete];
     else if(path.includes('/compare/'))data={status:'ahead'};
     else if(path.endsWith('/issues/12'))data={state:'open'};
     else if(path==='/graphql'){
@@ -87,6 +87,26 @@ test('metadata gate paginates statuses, review threads and thread comments befor
   assert.ok(f.calls.some(call=>call.query.includes('page=2')));
   assert.ok(f.calls.some(call=>call.variables?.cursor==='threads-next'));
   assert.ok(f.calls.some(call=>call.variables?.cursor==='comments-next'));
+});
+
+test('metadata gate does not re-publish an unchanged verdict',async t=>{
+  const probe=apiFixture(t);await runGate();
+  const [verdict]=probe.published;
+  const f=apiFixture(t,{existingReview:{context:'Wapentake / review',state:verdict.state,description:verdict.description}});
+  await runGate();
+  assert.deepEqual(f.published,[]);
+  const changed=apiFixture(t,{existingReview:{context:'Wapentake / review',state:'success',description:verdict.description}});
+  await runGate();
+  assert.equal(changed.published.length,1);
+});
+
+test('metadata gate keeps fetched statuses for de-duplication when the thread query fails',async t=>{
+  const probe=apiFixture(t,{graphFailure:true});await runGate();
+  const [verdict]=probe.published;
+  assert.match(verdict.description,/Could not verify all review metadata/);
+  const f=apiFixture(t,{graphFailure:true,existingReview:{context:'Wapentake / review',state:verdict.state,description:verdict.description}});
+  await runGate();
+  assert.deepEqual(f.published,[]);
 });
 
 test('metadata gate publishes no stale result when the PR head changes during verification',async t=>{
