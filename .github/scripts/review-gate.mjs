@@ -95,9 +95,12 @@ export async function runGate(){
   const repo=await get(prefix);
   const event=process.env.GITHUB_EVENT_PATH?JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')):{};
   if(process.env.GITHUB_EVENT_NAME==='status'&&event.context!=='CodeRabbit')return;
+  // A diff-comment event only refreshes its own pull request; every other event refreshes all of them.
+  const targetNumber=process.env.GITHUB_EVENT_NAME==='pull_request_review_comment'?event.pull_request?.number:undefined;
   const prs=await pages(`${prefix}/pulls?state=open&base=${encodeURIComponent(repo.default_branch)}`);
+  const selected=Number.isInteger(targetNumber)?prs.filter(pr=>pr.number===targetNumber):prs;
   let failed=false;
-  for(const pr of prs.filter(pr=>!pr.draft)){
+  for(const pr of selected.filter(pr=>!pr.draft)){
     try{
     const head=pr.head.sha;
     let errors=[];
