@@ -105,12 +105,8 @@ export async function runGate(){
     const head=pr.head.sha;
     let errors=[];let statuses=[];
     try{
-      // Keep fetched statuses even when the thread query fails so the de-duplication check below still works.
-      const [statusResult,threadResult]=await Promise.allSettled([pages(`${prefix}/commits/${head}/statuses`),threadsFor(pr.number)]);
-      if(statusResult.status==='fulfilled')statuses=statusResult.value;
-      if(statusResult.status==='rejected')throw statusResult.reason;
-      if(threadResult.status==='rejected')throw threadResult.reason;
-      const threads=threadResult.value;
+      // Store statuses as soon as they arrive so a later thread-query failure still de-duplicates below.
+      const [,threads]=await Promise.all([pages(`${prefix}/commits/${head}/statuses`).then(value=>{statuses=value;return value;}),threadsFor(pr.number)]);
       errors=assess(statuses,threads);
       for(const thread of threads){
         const item=disposition(thread.comments);
