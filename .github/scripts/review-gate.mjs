@@ -103,9 +103,10 @@ export async function runGate(){
   for(const pr of selected.filter(pr=>!pr.draft)){
     try{
     const head=pr.head.sha;
-    let errors=[];
+    let errors=[];let statuses=[];
     try{
-      const [statuses,threads]=await Promise.all([pages(`${prefix}/commits/${head}/statuses`),threadsFor(pr.number)]);
+      let threads;
+      [statuses,threads]=await Promise.all([pages(`${prefix}/commits/${head}/statuses`),threadsFor(pr.number)]);
       errors=assess(statuses,threads);
       for(const thread of threads){
         const item=disposition(thread.comments);
@@ -117,7 +118,15 @@ export async function runGate(){
     const summary=errors.length?errors.join('\n\n'):'CodeRabbit completed the current HEAD review. Every review thread is resolved with a written, linked disposition.';
     console.log(`PR #${pr.number} at ${head}: ${summary}`);
     if(process.env.REVIEW_GATE_READ_ONLY!=='1'){
-      await request(`${prefix}/statuses/${head}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({context:REVIEW_CONTEXT,state:errors.length?'failure':'success',description:summary.replace(/\s+/g,' ').slice(0,140),target_url:`https://github.com/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`})});
+      const state=errors.length?'failure':'success';
+      const description=summary.replace(/\s+/g,' ').slice(0,140);
+      // Statuses are newest first. Re-posting an identical verdict only consumes the per-SHA status quota.
+      const current=statuses.find(item=>item.context===REVIEW_CONTEXT);
+      if(current&&current.state===state&&current.description===description){
+        console.log(`PR #${pr.number}: review gate unchanged; not re-published.`);
+      }else{
+        await request(`${prefix}/statuses/${head}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({context:REVIEW_CONTEXT,state,description,target_url:`https://github.com/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`})});
+      }
     }
     // The required check carries eligibility; publishing a blocking result is successful delivery.
     if(process.env.REVIEW_GATE_READ_ONLY==='1')failed ||= errors.length>0;
